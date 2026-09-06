@@ -158,6 +158,31 @@ var selectOperatorScenarios = []expressionScenario{
 			"D0, P[1], (!!null)::~\n",
 		},
 	},
+	{
+		// Regression test: missing keys are dropped from [...] inside select.
+		// select evaluates its condition against a read-only context
+		// (SingleReadonlyChildContext, context.go), which suppresses the auto-created
+		// null node in traverseMap (operator_traverse_path.go) for a missing key. So
+		// [.a] is currently [] (length 0) here instead of [null] (length 1), as it is
+		// at the top level, and this select produces no output instead of {}.
+		skipDoc:     true,
+		description: "select with a missing key collected into an array - currently broken",
+		expression:  `{} | select([.a] | length == 1)`,
+		expected: []string{
+			"D0, P[], (!!map)::{}\n",
+		},
+	},
+	{
+		// Contrast case: indexing an array always fills in missing elements with null,
+		// regardless of the read-only context, so this already works and should keep
+		// working once the length regression above is fixed.
+		skipDoc:     true,
+		description: "select with a missing key collected then indexed - already correct",
+		expression:  `{} | select((([.a] | .[0]) | tag) == "!!null")`,
+		expected: []string{
+			"D0, P[], (!!map)::{}\n",
+		},
+	},
 }
 
 func TestSelectOperatorScenarios(t *testing.T) {
