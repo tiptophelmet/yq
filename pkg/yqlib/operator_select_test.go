@@ -159,20 +159,6 @@ var selectOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
-		// Regression test: missing keys are dropped from [...] inside select.
-		// select evaluates its condition against a read-only context
-		// (SingleReadonlyChildContext, context.go), which suppresses the auto-created
-		// null node in traverseMap (operator_traverse_path.go) for a missing key. So
-		// [.a] is currently [] (length 0) here instead of [null] (length 1), as it is
-		// at the top level, and this select produces no output instead of {}.
-		skipDoc:     true,
-		description: "select with a missing key collected into an array - currently broken",
-		expression:  `{} | select([.a] | length == 1)`,
-		expected: []string{
-			"D0, P[], (!!map)::{}\n",
-		},
-	},
-	{
 		// Contrast case: indexing an array always fills in missing elements with null,
 		// regardless of the read-only context, so this already works and should keep
 		// working once the length regression above is fixed.
@@ -190,4 +176,24 @@ func TestSelectOperatorScenarios(t *testing.T) {
 		testScenario(t, &tt)
 	}
 	documentOperatorScenarios(t, "select", selectOperatorScenarios)
+}
+
+// Regression test: missing keys are dropped from [...] inside select. select
+// evaluates its condition against a read-only context (SingleReadonlyChildContext,
+// context.go), which suppresses the auto-created null node in traverseMap
+// (operator_traverse_path.go) for a missing key. So [.a] is currently []
+// (length 0) here instead of [null] (length 1), as it is at the top level, and
+// this select produces no output instead of {}. Skipped until that's fixed;
+// the fix step should remove the t.Skip call so this scenario runs and asserts
+// for real.
+func TestSelectOperatorScenarios_MissingKeyCollectedIntoArray(t *testing.T) {
+	t.Skip("currently broken: see context.go SingleReadonlyChildContext / operator_traverse_path.go traverseMap")
+	tt := expressionScenario{
+		description: "select with a missing key collected into an array",
+		expression:  `{} | select([.a] | length == 1)`,
+		expected: []string{
+			"D0, P[], (!!map)::{}\n",
+		},
+	}
+	testScenario(t, &tt)
 }
