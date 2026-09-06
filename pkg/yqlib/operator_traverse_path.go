@@ -260,6 +260,12 @@ func traverseMap(context Context, matchingNode *CandidateNode, keyNode *Candidat
 		return nil, err
 	}
 
+	// NB: when context.DontAutoCreate is true (set by SingleReadonlyChildContext / ReadOnlyClone
+	// in context.go, used by select/and/or to evaluate their condition without mutating the
+	// document), this auto-create step is skipped entirely rather than creating a throwaway
+	// null node. That means a missing key yields zero matches here instead of one null match,
+	// so e.g. `select([.a] | length == 1)` sees [] rather than [null]. See the regression cases
+	// in operator_select_test.go and operator_booleans_test.go.
 	if !splat && !prefs.DontAutoCreate && !context.DontAutoCreate && newMatches.Len() == 0 {
 		log.Debugf("no matches, creating one for %v", NodeToString(keyNode))
 		//no matches, create one automagically
