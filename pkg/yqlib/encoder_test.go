@@ -81,3 +81,33 @@ func TestJsonEncoderDoesNotEscapeHTMLChars(t *testing.T) {
 	var actualJSON = yamlToJSON(t, sampleYaml, 0)
 	test.AssertResult(t, expectedJSON, actualJSON)
 }
+
+func yamlToYaml(t *testing.T, sampleYaml string) string {
+	t.Helper()
+	var output bytes.Buffer
+	writer := bufio.NewWriter(&output)
+
+	prefs := ConfiguredYamlPreferences.Copy()
+	prefs.UnwrapScalar = false
+	var yamlEncoder = NewYamlEncoder(prefs)
+	inputs, err := readDocuments(strings.NewReader(sampleYaml), "sample.yml", 0, NewYamlDecoder(ConfiguredYamlPreferences))
+	if err != nil {
+		panic(err)
+	}
+	node := inputs.Front().Value.(*CandidateNode)
+
+	err = yamlEncoder.Encode(writer, node)
+	if err != nil {
+		panic(err)
+	}
+	writer.Flush()
+
+	return output.String()
+}
+
+func TestYamlEncoderTopLevelSingleQuotedClosingIndent(t *testing.T) {
+	var sampleYaml = "'Get quacked.\n\n- Duck\n\n'\n"
+	var expected = "'Get quacked.\n\n  - Duck\n\n  '\n"
+	var actual = yamlToYaml(t, sampleYaml)
+	test.AssertResult(t, expected, actual)
+}
