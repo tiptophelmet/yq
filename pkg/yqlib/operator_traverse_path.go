@@ -84,7 +84,7 @@ func traverse(context Context, matchingNode *CandidateNode, operation *Operation
 
 	case SequenceNode:
 		log.Debugf("its a sequence of %v things!", len(matchingNode.Content))
-		return traverseArray(matchingNode, operation, operation.Preferences.(traversePreferences))
+		return traverseArray(context, matchingNode, operation, operation.Preferences.(traversePreferences))
 
 	default:
 		return list.New(), nil
@@ -201,7 +201,7 @@ func traverseArrayIndices(context Context, matchingNode *CandidateNode, indicesT
 
 	switch matchingNode.Kind {
 	case SequenceNode:
-		return traverseArrayWithIndices(matchingNode, indicesToTraverse, prefs)
+		return traverseArrayWithIndices(context, matchingNode, indicesToTraverse, prefs)
 	case MappingNode:
 		return traverseMapWithIndices(context, matchingNode, indicesToTraverse, prefs)
 	}
@@ -228,7 +228,7 @@ func traverseMapWithIndices(context Context, candidate *CandidateNode, indices [
 	return matchingNodeMap, nil
 }
 
-func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, prefs traversePreferences) (*list.List, error) {
+func traverseArrayWithIndices(context Context, node *CandidateNode, indices []*CandidateNode, prefs traversePreferences) (*list.List, error) {
 	log.Debug("traverseArrayWithIndices")
 	var newMatches = list.New()
 	if len(indices) == 0 {
@@ -241,6 +241,8 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 
 	}
 
+	noAutoCreate := prefs.DontAutoCreate || context.DontAutoCreate
+
 	for _, indexNode := range indices {
 		log.Debugf("traverseArrayWithIndices: '%v'", indexNode.Value)
 		index, err := parseInt(indexNode.Value)
@@ -250,6 +252,13 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 		if err != nil {
 			return nil, fmt.Errorf("cannot index array with '%v' (%w)", indexNode.Value, err)
 		}
+
+		if index >= len(node.Content) && noAutoCreate {
+			log.Debugf("no match, returning a detached null for index %v", index)
+			newMatches.PushBack(createDetachedNullChild(node, createScalarNode(index, fmt.Sprintf("%v", index)), false))
+			continue
+		}
+
 		indexToUse := index
 		contentLength := len(node.Content)
 		for contentLength <= index {
@@ -276,6 +285,26 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 	return newMatches, nil
 }
 
+// createDetachedNullChild builds a null CandidateNode with Parent/Key metadata
+// set as though it were a child of parent, but without appending it to
+// parent.Content - used for read-only traversal of a missing key/index, so
+// the document is not mutated.
+func createDetachedNullChild(parent *CandidateNode, keyNode *CandidateNode, isMapKey bool) *CandidateNode {
+	valueNode := parent.CreateChild()
+	valueNode.Kind = ScalarNode
+	valueNode.Tag = "!!null"
+	valueNode.Value = "null"
+
+	key := keyNode.Copy()
+	key.SetParent(parent)
+	key.IsMapKey = isMapKey
+
+	valueNode.Key = key
+	valueNode.IsMapKey = false
+
+	return valueNode
+}
+
 func keyMatches(key *CandidateNode, wantedKey string, exactKeyMatch bool) bool {
 	if exactKeyMatch {
 		// this is used for merge
@@ -292,19 +321,27 @@ func traverseMap(context Context, matchingNode *CandidateNode, keyNode *Candidat
 		return nil, err
 	}
 
-	if !splat && !prefs.DontAutoCreate && !context.DontAutoCreate && newMatches.Len() == 0 {
-		log.Debugf("no matches, creating one for %v", NodeToString(keyNode))
-		//no matches, create one automagically
-		valueNode := matchingNode.CreateChild()
-		valueNode.Kind = ScalarNode
-		valueNode.Tag = "!!null"
-		valueNode.Value = "null"
+	if !splat && newMatches.Len() == 0 {
+		var valueNode *CandidateNode
 
-		if len(matchingNode.Content) == 0 {
-			matchingNode.Style = 0
+		if prefs.DontAutoCreate || context.DontAutoCreate {
+			log.Debugf("no matches, returning a detached null for %v", NodeToString(keyNode))
+			valueNode = createDetachedNullChild(matchingNode, keyNode, true)
+			keyNode = valueNode.Key
+		} else {
+			log.Debugf("no matches, creating one for %v", NodeToString(keyNode))
+			//no matches, create one automagically
+			valueNode = matchingNode.CreateChild()
+			valueNode.Kind = ScalarNode
+			valueNode.Tag = "!!null"
+			valueNode.Value = "null"
+
+			if len(matchingNode.Content) == 0 {
+				matchingNode.Style = 0
+			}
+
+			keyNode, valueNode = matchingNode.AddKeyValueChild(keyNode, valueNode)
 		}
-
-		keyNode, valueNode = matchingNode.AddKeyValueChild(keyNode, valueNode)
 
 		if prefs.IncludeMapKeys {
 			newMatches.Set(keyNode.GetKey(), keyNode)
@@ -424,8 +461,8 @@ func traverseMergeAnchor(newMatches *orderedmap.OrderedMap, merge *CandidateNode
 	}
 }
 
-func traverseArray(candidate *CandidateNode, operation *Operation, prefs traversePreferences) (*list.List, error) {
+func traverseArray(context Context, candidate *CandidateNode, operation *Operation, prefs traversePreferences) (*list.List, error) {
 	log.Debugf("operation Value %v", operation.Value)
 	indices := []*CandidateNode{{Value: operation.StringValue}}
-	return traverseArrayWithIndices(candidate, indices, prefs)
+	return traverseArrayWithIndices(context, candidate, indices, prefs)
 }

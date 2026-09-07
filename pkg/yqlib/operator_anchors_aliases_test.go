@@ -419,7 +419,7 @@ var anchorOperatorScenarios = []expressionScenario{
 		document:   `a: {c: cat}`,
 		expression: `.a anchor |= .b`,
 		expected: []string{
-			"D0, P[], (!!map)::a: {c: cat}\n",
+			"D0, P[], (!!map)::a: &null {c: cat}\n",
 		},
 	},
 	{
@@ -427,7 +427,7 @@ var anchorOperatorScenarios = []expressionScenario{
 		document:   `a: {c: cat}`,
 		expression: `.a anchor = .b`,
 		expected: []string{
-			"D0, P[], (!!map)::a: {c: cat}\n",
+			"D0, P[], (!!map)::a: &null {c: cat}\n",
 		},
 	},
 	{
@@ -459,7 +459,7 @@ var anchorOperatorScenarios = []expressionScenario{
 		document:   `{b: &meow purr, a: cat}`,
 		expression: `.a alias = .c`,
 		expected: []string{
-			"D0, P[], (!!map)::{b: &meow purr, a: cat}\n",
+			"D0, P[], (!!map)::{b: &meow purr, a: *null}\n",
 		},
 	},
 	{

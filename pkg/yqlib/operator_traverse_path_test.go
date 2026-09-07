@@ -761,3 +761,33 @@ func TestTraverseAliasCycleChain(t *testing.T) {
 		t.Fatalf("expected 'alias cycle detected', got %q", err.Error())
 	}
 }
+
+// Regression test for a missing-key read inside select: reading .a on {}
+// used to be dropped silently in read-only contexts, but must still yield a
+// null candidate without attaching anything to the original document.
+func TestTraverseReadOnlyMissingKeyDoesNotMutateDocument(t *testing.T) {
+	node, err := getExpressionParser().ParseExpression(`select([.a] | length == 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inputs, err := readDocument(`{}`, "sample.yml", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	documentNode := inputs.Front().Value.(*CandidateNode)
+
+	context, err := NewDataTreeNavigator().GetMatchingNodes(Context{MatchingNodes: inputs}, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if context.MatchingNodes.Len() != 1 {
+		t.Fatalf("expected {} to be selected, got %v matches", context.MatchingNodes.Len())
+	}
+
+	if len(documentNode.Content) != 0 {
+		t.Fatalf("expected document to remain unmutated, but it now has content: %v", NodeToString(documentNode))
+	}
+}

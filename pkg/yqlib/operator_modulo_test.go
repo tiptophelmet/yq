@@ -15,12 +15,10 @@ var moduloOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
-		skipDoc:    true,
-		document:   `{}`,
-		expression: "(.a / .b) as $x | .",
-		expected: []string{
-			"D0, P[], (!!map)::{}\n",
-		},
+		skipDoc:       true,
+		document:      `{}`,
+		expression:    "(.a / .b) as $x | .",
+		expectedError: "!!null (a) cannot be divided by !!null (b)",
 	},
 	{
 		description:    "Number modulo - int",

@@ -27,7 +27,7 @@ var booleanOperatorScenarios = []expressionScenario{
 		document:   "b: hi",
 		expression: `.a or .c`,
 		expected: []string{
-			"D0, P[], (!!bool)::false\n",
+			"D0, P[a], (!!bool)::false\n",
 		},
 	},
 	{
@@ -214,6 +214,22 @@ var booleanOperatorScenarios = []expressionScenario{
 		expression: `(.a.b and .c) as $x | .`,
 		expected: []string{
 			"D0, P[], (!!map)::{}\n",
+		},
+	},
+	{
+		skipDoc:    true,
+		document:   `{}`,
+		expression: `(true and ([.a] | length == 1))`,
+		expected: []string{
+			"D0, P[], (!!bool)::true\n",
+		},
+	},
+	{
+		skipDoc:    true,
+		document:   `{}`,
+		expression: `(false or ([.a] | length == 1))`,
+		expected: []string{
+			"D0, P[], (!!bool)::true\n",
 		},
 	},
 	{
