@@ -1,6 +1,7 @@
 package yqlib
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mikefarah/yq/v4/test"
@@ -163,4 +164,51 @@ func TestYamlFormatScenarios(t *testing.T) {
 	for _, tt := range yamlFormatScenarios {
 		testYamlScenario(t, tt)
 	}
+}
+
+// descriptionScalarValue decodes doc and returns the raw value of
+// .paths."/v1/quack".get.description
+func descriptionScalarValue(t *testing.T, doc string, decoder Decoder) string {
+	t.Helper()
+
+	inputs, err := readDocuments(strings.NewReader(doc), "sample.yml", 0, decoder)
+	if err != nil {
+		t.Fatalf("failed to read document: %v", err)
+	}
+
+	exp, err := getExpressionParser().ParseExpression(`.paths."/v1/quack".get.description`)
+	if err != nil {
+		t.Fatalf("failed to parse expression: %v", err)
+	}
+
+	context, err := NewDataTreeNavigator().GetMatchingNodes(Context{MatchingNodes: inputs}, exp)
+	if err != nil {
+		t.Fatalf("failed to navigate document: %v", err)
+	}
+
+	return context.MatchingNodes.Front().Value.(*CandidateNode).Value
+}
+
+func TestYamlSingleQuotedScalarEndingInBlankLineKeepsIndentation(t *testing.T) {
+	input := "paths:\n  /v1/quack:\n    get:\n      description: '\n        Get quacked.\n\n        - Duck\n\n        '\n"
+
+	decoder := NewYamlDecoder(ConfiguredYamlPreferences)
+	encoder := NewYamlEncoder(ConfiguredYamlPreferences)
+
+	originalValue := descriptionScalarValue(t, input, decoder)
+
+	output, err := processFormatScenario(formatScenario{input: input}, decoder, encoder)
+	if err != nil {
+		t.Fatalf("failed to encode document: %v", err)
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "'") || strings.HasPrefix(line, "\"") {
+			t.Fatalf("output has a line starting with a quote character at column 0:\n%v", output)
+		}
+	}
+
+	roundTrippedValue := descriptionScalarValue(t, output, decoder)
+
+	test.AssertResult(t, originalValue, roundTrippedValue)
 }

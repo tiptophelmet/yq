@@ -2,6 +2,7 @@ package yqlib
 
 import (
 	"fmt"
+	"strings"
 
 	yaml "go.yaml.in/yaml/v4"
 )
@@ -71,8 +72,19 @@ func (o *CandidateNode) copyFromYamlNode(node *yaml.Node, anchorMap map[string]*
 	o.Column = node.Column
 }
 
+// fixSingleQuotedTrailingNewlineStyle avoids emitting single-quoted scalars whose
+// value ends with a line break: the underlying emitter writes the closing quote
+// with no indentation in that case, producing YAML that other parsers reject.
+// Double quoting round-trips the same value without that problem.
+func fixSingleQuotedTrailingNewlineStyle(style Style, kind Kind, value string) Style {
+	if kind == ScalarNode && style == SingleQuotedStyle && strings.HasSuffix(value, "\n") {
+		return DoubleQuotedStyle
+	}
+	return style
+}
+
 func (o *CandidateNode) copyToYamlNode(node *yaml.Node) {
-	node.Style = MapToYamlStyle(o.Style)
+	node.Style = MapToYamlStyle(fixSingleQuotedTrailingNewlineStyle(o.Style, o.Kind, o.Value))
 
 	node.Tag = o.Tag
 	node.Value = o.Value
