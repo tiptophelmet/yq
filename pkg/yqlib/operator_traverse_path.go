@@ -92,10 +92,6 @@ func traverse(context Context, matchingNode *CandidateNode, operation *Operation
 }
 
 func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	//lhs may update the variable context, we should pass that into the RHS
-	// BUT we still return the original context back (see jq)
-	// https://stedolan.github.io/jq/manual/#Variable/SymbolicBindingOperator:...as$identifier|...
-
 	log.Debugf("--traverseArrayOperator")
 
 	if expressionNode.RHS != nil && expressionNode.RHS.RHS != nil && expressionNode.RHS.RHS.Operation.OperationType == createMapOpType {
@@ -106,14 +102,13 @@ func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode
 		return sliceArrayOperator(d, lhsContext, expressionNode.RHS.RHS)
 	}
 
+	//lhs may update the variable context, we should pass that into the RHS
+	// BUT we still return the original context back (see jq)
+	// https://stedolan.github.io/jq/manual/#Variable/SymbolicBindingOperator:...as$identifier|...
+	// Note lhs is evaluated once, against the whole incoming context (rather than
+	// per candidate below), so that operators which rely on seeing every candidate
+	// in one pass, e.g. `split_doc`'s document numbering, keep working correctly.
 	lhs, err := d.GetMatchingNodes(context, expressionNode.LHS)
-	if err != nil {
-		return Context{}, err
-	}
-
-	// rhs is a collect expression that yields, for every candidate in the
-	// incoming context, its own list of indices to retrieve from the arrays.
-	rhs, err := d.GetMatchingNodes(context.ReadOnlyClone(), expressionNode.RHS)
 	if err != nil {
 		return Context{}, err
 	}
@@ -126,38 +121,47 @@ func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode
 
 	var matches = list.New()
 
-	if lhs.MatchingNodes.Len() == rhs.MatchingNodes.Len() {
-		// lhs produced exactly one candidate per incoming candidate (e.g. a plain
-		// traversal like `.` or `split_doc`), so pair each lhs candidate with the
-		// indices collected for that same incoming candidate. This ensures each
-		// candidate is indexed with the indices computed just for it, e.g.
-		// `keys[] | $o[.]` should look up every key, not just the first one.
-		lhsEl := lhs.MatchingNodes.Front()
-		rhsEl := rhs.MatchingNodes.Front()
-		for lhsEl != nil {
-			indicesToTraverse := rhsEl.Value.(*CandidateNode).Content
-			log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+	// lhs produces exactly one result per incoming candidate for cardinality
+	// preserving operations (e.g. `.` or `split_doc`), so each lhs candidate can be
+	// paired with the index expression evaluated against that same incoming
+	// candidate. Otherwise (e.g. lhs is constant with respect to the incoming
+	// context, like a variable reference `$o`), every incoming candidate's own
+	// indices are looked up against the whole lhs result instead.
+	pairwise := lhs.MatchingNodes.Len() == context.MatchingNodes.Len()
+	lhsEl := lhs.MatchingNodes.Front()
+
+	// The rhs index expression is evaluated separately for every candidate in the
+	// incoming context (rather than once for the whole context), so that e.g.
+	// `keys[] | $o[.]` looks up every key against $o, instead of only the first one.
+	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
+		singleContext := context.SingleChildContext(el.Value.(*CandidateNode))
+
+		rhs, err := d.GetMatchingNodes(singleContext.ReadOnlyClone(), expressionNode.RHS)
+		if err != nil {
+			return Context{}, err
+		}
+
+		var indicesToTraverse []*CandidateNode
+		if rhs.MatchingNodes.Len() != 0 {
+			indicesToTraverse = rhs.MatchingNodes.Front().Value.(*CandidateNode).Content
+		}
+		log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+
+		if pairwise {
 			newNodes, err := traverseArrayIndices(lhs, lhsEl.Value.(*CandidateNode), indicesToTraverse, prefs)
 			if err != nil {
 				return Context{}, err
 			}
 			matches.PushBackList(newNodes)
 			lhsEl = lhsEl.Next()
-			rhsEl = rhsEl.Next()
+			continue
 		}
-	} else {
-		// lhs is constant with respect to the incoming context (e.g. a variable
-		// reference like `$o`), so apply each incoming candidate's own indices
-		// against the whole lhs result in turn.
-		for rhsEl := rhs.MatchingNodes.Front(); rhsEl != nil; rhsEl = rhsEl.Next() {
-			indicesToTraverse := rhsEl.Value.(*CandidateNode).Content
-			log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
-			result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
-			if err != nil {
-				return Context{}, err
-			}
-			matches.PushBackList(result.MatchingNodes)
+
+		result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
+		if err != nil {
+			return Context{}, err
 		}
+		matches.PushBackList(result.MatchingNodes)
 	}
 
 	return context.ChildContext(matches), nil
