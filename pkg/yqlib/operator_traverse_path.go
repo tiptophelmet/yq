@@ -39,11 +39,11 @@ func traversePathOperator(_ *dataTreeNavigator, context Context, expressionNode 
 // resolveAliasChain follows an alias chain iteratively, returning the
 // first non-alias node. Returns an error if a cycle is detected.
 func resolveAliasChain(node *CandidateNode) (*CandidateNode, error) {
-	if node.Kind != AliasNode {
+	if node == nil || node.Kind != AliasNode {
 		return node, nil
 	}
 	visited := map[*CandidateNode]bool{}
-	for node.Kind == AliasNode {
+	for node != nil && node.Kind == AliasNode {
 		if visited[node] {
 			return nil, fmt.Errorf("alias cycle detected")
 		}
