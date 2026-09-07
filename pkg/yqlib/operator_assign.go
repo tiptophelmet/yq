@@ -30,7 +30,15 @@ func getAssignPreferences(preferences interface{}) assignPreferences {
 }
 
 func assignUpdateOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	lhs, err := d.GetMatchingNodes(context, expressionNode.LHS)
+	// an assignment must always be able to create its own target path, even
+	// when it's being evaluated inside a read-only context (e.g. while it's
+	// nested inside an operand of another operator, like
+	// `({} | .a.b=3) *? .`). DontAutoCreate here exists to stop other
+	// operators' plain reads from vivifying fields as a side effect - it's
+	// not meant to stop an explicit assignment from doing its job.
+	creationContext := context
+	creationContext.DontAutoCreate = false
+	lhs, err := d.GetMatchingNodes(creationContext, expressionNode.LHS)
 	if err != nil {
 		return Context{}, err
 	}
