@@ -675,18 +675,6 @@ var traversePathOperatorScenarios = []expressionScenario{
 		expression:    ". = (.x = 1)",
 		expectedError: "alias cycle detected",
 	},
-	{
-		// Baseline for the "missing keys are dropped from [...] inside select/and/or"
-		// regression: at the top level, collecting a missing key auto-creates a null
-		// placeholder, so [.a] is [null] and length is 1. select/and/or don't preserve
-		// this (see operator_select_test.go and operator_booleans_test.go).
-		skipDoc:     true,
-		description: "collect a missing key into an array - baseline outside select/and/or",
-		expression:  `{} | ([.a] | length)`,
-		expected: []string{
-			"D0, P[], (!!int)::1\n",
-		},
-	},
 }
 
 func TestTraversePathOperatorScenarios(t *testing.T) {

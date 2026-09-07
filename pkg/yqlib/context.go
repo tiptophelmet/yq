@@ -14,11 +14,6 @@ type Context struct {
 	datetimeLayout string
 }
 
-// SingleReadonlyChildContext is used by select/and/or to evaluate their condition
-// against a single candidate without mutating the document. Setting DontAutoCreate
-// here is what stops traverseMap (operator_traverse_path.go) from creating the usual
-// null placeholder for a missing key, so a missing key can silently produce zero
-// matches instead of [null] inside these conditions.
 func (n *Context) SingleReadonlyChildContext(candidate *CandidateNode) Context {
 	list := list.New()
 	list.PushBack(candidate)
@@ -101,9 +96,6 @@ func (n *Context) Clone() Context {
 	return n.ChildContext(n.MatchingNodes)
 }
 
-// ReadOnlyClone is used by and/or (see operator_booleans.go) to evaluate their operands
-// without mutating the document. Same caveat as SingleReadonlyChildContext: it suppresses
-// the auto-created null node in traverseMap for a missing key.
 func (n *Context) ReadOnlyClone() Context {
 	clone := n.Clone()
 	clone.DontAutoCreate = true
