@@ -44,9 +44,29 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 		return writeString(writer, valueToPrint)
 	}
 
+	target, err := node.MarshalYAML()
+	if err != nil {
+		return err
+	}
+
+	trailingContent := target.FootComment
+	target.FootComment = ""
+
+	// go.yaml.in/yaml/v4's emitter decides whether a multi-line string may use
+	// literal/folded block style by scanning its bytes for "printable" characters,
+	// but that scan never recognises 4-byte UTF-8 sequences (runes above U+FFFF,
+	// e.g. emoji outside the Basic Multilingual Plane) as printable. That makes it
+	// treat such runes as special characters and silently fall back to a
+	// double-quoted, single-line-with-escapes rendering. We work around this
+	// upstream bug by swapping those runes out for placeholder runes the emitter
+	// does recognise as printable before dumping, then swapping the original runes
+	// back into the encoded bytes afterwards.
+	unicodeWorkaround := newSupplementaryRuneWorkaround()
+	unicodeWorkaround.remapNode(target)
+
 	destination := writer
 	tempBuffer := bytes.NewBuffer(nil)
-	if ye.prefs.ColorsEnabled {
+	if ye.prefs.ColorsEnabled || unicodeWorkaround.active() {
 		destination = tempBuffer
 	}
 
@@ -67,15 +87,6 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 		return fmt.Errorf("configure YAML encoding: %w", err)
 	}
 
-	target, err := node.MarshalYAML()
-	if err != nil {
-		_ = dumper.Close()
-		return err
-	}
-
-	trailingContent := target.FootComment
-	target.FootComment = ""
-
 	err = dumper.Dump(target)
 	if closeErr := dumper.Close(); err == nil {
 		err = closeErr
@@ -89,7 +100,10 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 	}
 
 	if ye.prefs.ColorsEnabled {
-		return colorizeAndPrint(tempBuffer.Bytes(), writer)
+		return colorizeAndPrint(unicodeWorkaround.restore(tempBuffer.Bytes()), writer)
+	}
+	if unicodeWorkaround.active() {
+		return writeString(writer, string(unicodeWorkaround.restore(tempBuffer.Bytes())))
 	}
 	return nil
 }
