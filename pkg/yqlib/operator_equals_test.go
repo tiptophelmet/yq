@@ -73,7 +73,7 @@ var equalsOperatorScenarios = []expressionScenario{
 		document:   "{}",
 		expression: ".a != .b",
 		expected: []string{
-			"D0, P[], (!!bool)::false\n",
+			"D0, P[a], (!!bool)::false\n",
 		},
 	},
 	{
