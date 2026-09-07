@@ -88,6 +88,38 @@ var variableOperatorScenarios = []expressionScenario{
 			"D0, P[], (!!map)::a: {b: \"new\", c: something}\n",
 		},
 	},
+	{
+		skipDoc:     true,
+		description: "Look up every value using keys, for a sequence",
+		document:    `["a","b"]`,
+		expression:  `. as $o | keys[] | $o[.]`,
+		expected: []string{
+			"D0, P[0], (!!str)::a\n",
+			"D0, P[1], (!!str)::b\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Look up every value using keys, for a map",
+		document:    `{a: 1, b: 2}`,
+		expression:  `. as $o | keys[] | $o[.]`,
+		expected: []string{
+			"D0, P[a], (!!int)::1\n",
+			"D0, P[b], (!!int)::2\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Look up multiple indices per candidate, for every candidate",
+		document:    `["a","b"]`,
+		expression:  `. as $o | keys[] | $o[., 0]`,
+		expected: []string{
+			"D0, P[0], (!!str)::a\n",
+			"D0, P[0], (!!str)::a\n",
+			"D0, P[1], (!!str)::b\n",
+			"D0, P[0], (!!str)::a\n",
+		},
+	},
 }
 
 func TestVariableOperatorScenarios(t *testing.T) {
