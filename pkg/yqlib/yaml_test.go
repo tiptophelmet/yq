@@ -130,6 +130,18 @@ var yamlFormatScenarios = []formatScenario{
 		input:       "description: '\n  Get quacked, it''s fine.\n\n  - Duck'\n",
 		expected:    "description: ' Get quacked, it''s fine.\n\n  - Duck'\n",
 	},
+	{
+		description: "multiline string with a supplementary-plane emoji stays a literal block",
+		skipDoc:     true,
+		input:       "longDescription: |\n  Multiline file containing\n\n  🚧\n\n  A \"weird\" utf8 char?\n",
+		expected:    "longDescription: |\n  Multiline file containing\n\n  🚧\n\n  A \"weird\" utf8 char?\n",
+	},
+	{
+		description: "multiline string with a BMP symbol stays a literal block",
+		skipDoc:     true,
+		input:       "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
+		expected:    "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
+	},
 }
 
 var yamlParseScenarios = []expressionScenario{

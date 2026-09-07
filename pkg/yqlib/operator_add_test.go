@@ -42,7 +42,7 @@ var addOperatorScenarios = []expressionScenario{
 		document:   "apples: 3",
 		expression: `.bobo + 3`,
 		expected: []string{
-			"D0, P[], (!!int)::3\n",
+			"D0, P[bobo], (!!int)::3\n",
 		},
 	},
 	{
@@ -73,9 +73,9 @@ var addOperatorScenarios = []expressionScenario{
 		document:   `resources: [foo, bar, baz]`,
 		expression: `.missing + .resources | .[]`,
 		expected: []string{
-			"D0, P[resources 0], (!!str)::foo\n",
-			"D0, P[resources 1], (!!str)::bar\n",
-			"D0, P[resources 2], (!!str)::baz\n",
+			"D0, P[missing 0], (!!str)::foo\n",
+			"D0, P[missing 1], (!!str)::bar\n",
+			"D0, P[missing 2], (!!str)::baz\n",
 		},
 	},
 	{
@@ -83,9 +83,9 @@ var addOperatorScenarios = []expressionScenario{
 		document:   `resources: [foo, bar, baz]`,
 		expression: `. | .missing + .resources | .[]`,
 		expected: []string{
-			"D0, P[resources 0], (!!str)::foo\n",
-			"D0, P[resources 1], (!!str)::bar\n",
-			"D0, P[resources 2], (!!str)::baz\n",
+			"D0, P[missing 0], (!!str)::foo\n",
+			"D0, P[missing 1], (!!str)::bar\n",
+			"D0, P[missing 2], (!!str)::baz\n",
 		},
 	},
 	{
@@ -93,7 +93,7 @@ var addOperatorScenarios = []expressionScenario{
 		document:   `resources: [foo, bar, baz]`,
 		expression: `. | .missing + .resources`,
 		expected: []string{
-			"D0, P[resources], (!!seq)::[foo, bar, baz]\n",
+			"D0, P[missing], (!!seq)::[foo, bar, baz]\n",
 		},
 	},
 	{
@@ -101,9 +101,9 @@ var addOperatorScenarios = []expressionScenario{
 		document:   `resources: [foo, bar, baz]`,
 		expression: `. | .missing + .resources | .[]`,
 		expected: []string{
-			"D0, P[resources 0], (!!str)::foo\n",
-			"D0, P[resources 1], (!!str)::bar\n",
-			"D0, P[resources 2], (!!str)::baz\n",
+			"D0, P[missing 0], (!!str)::foo\n",
+			"D0, P[missing 1], (!!str)::bar\n",
+			"D0, P[missing 2], (!!str)::baz\n",
 		},
 	},
 	{

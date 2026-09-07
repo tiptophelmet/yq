@@ -123,12 +123,48 @@ g:
 	},
 	{
 		description:           "Reset style - or pretty print",
-		subdescription:        "Set empty (default) quote style, note the usage of `...` to match keys too. Note that there is a `--prettyPrint/-P` short flag for this.",
+		subdescription:        "Set empty (default) quote style, note the usage of `...` to match keys too. Note that there is a `--prettyPrint/-P` short flag for this. Note that double quoted strings that need to escape characters (e.g. a newline) will keep their double quotes.",
 		dontFormatInputForDoc: true,
-		document:              `{a: cat, "b": 5, 'c': 3.2, "e": true,  f: [1,2,3], "g": { something: "cool"} }`,
+		document:              `{a: cat, "b": 5, 'c': 3.2, "e": true,  f: [1,2,3], "g": { something: "cool"}, "h": "double\nquote" }`,
 		expression:            `... style=""`,
 		expected: []string{
-			"D0, P[], (!!map)::a: cat\nb: 5\nc: 3.2\ne: true\nf:\n    - 1\n    - 2\n    - 3\ng:\n    something: cool\n",
+			"D0, P[], (!!map)::a: cat\nb: 5\nc: 3.2\ne: true\nf:\n    - 1\n    - 2\n    - 3\ng:\n    something: cool\nh: \"double\\nquote\"\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Reset style keeps double quotes on keys that need escaping",
+		document:    "\"double\\nquote\": true\n",
+		expression:  `... style=""`,
+		expected: []string{
+			"D0, P[], (!!map)::? \"double\\nquote\"\n: true\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Reset style unquotes plain and single quoted values without special characters",
+		document:    "a: plain\nb: 'single'\n",
+		expression:  `... style=""`,
+		expected: []string{
+			"D0, P[], (!!map)::a: plain\nb: single\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Reset style still quotes values that need it for other reasons",
+		document:    "a: \"{needs quote}\"\n",
+		expression:  `... style=""`,
+		expected: []string{
+			"D0, P[], (!!map)::a: '{needs quote}'\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Reset style leaves existing literal block scalars alone",
+		document:    "a: |-\n  cat\n  dog\n",
+		expression:  `... style=""`,
+		expected: []string{
+			"D0, P[], (!!map)::a: |-\n    cat\n    dog\n",
 		},
 	},
 	{

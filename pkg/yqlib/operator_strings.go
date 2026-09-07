@@ -45,65 +45,108 @@ func evaluate(d *dataTreeNavigator, context Context, expStr string) (string, err
 	return node.Value, nil
 }
 
+// findInterpolationEnd returns the index of the ")" that closes the interpolation
+// expression starting at runes[start], or -1 if it's not closed. It is quote-aware:
+// a quoted substring (with its own \\-escapes) is skipped over as an atomic unit, so
+// parens or escaped quotes inside a quoted key don't affect the nesting count.
+func findInterpolationEnd(runes []rune, start int) int {
+	depth := 0
+	for i := start; i < len(runes); i++ {
+		switch runes[i] {
+		case '"':
+			closed := false
+			for i++; i < len(runes); i++ {
+				if runes[i] == '\\' && i < len(runes)-1 {
+					i++
+				} else if runes[i] == '"' {
+					closed = true
+					break
+				}
+			}
+			if !closed {
+				return -1
+			}
+		case '\\':
+			if i < len(runes)-1 {
+				i++
+			}
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				return i
+			}
+			depth--
+		}
+	}
+	return -1
+}
+
+// unescapeInterpolationExpression prepares the raw text of a \( ... ) block to be
+// parsed as an expression: an escaped ")" or "\\" outside of quotes is unescaped, while
+// quoted substrings are passed through verbatim for the recursive parser to unescape itself.
+func unescapeInterpolationExpression(runes []rune) string {
+	var expSb strings.Builder
+	for i := 0; i < len(runes); i++ {
+		char := runes[i]
+		if char == '"' {
+			expSb.WriteRune(char)
+			for i++; i < len(runes); i++ {
+				expSb.WriteRune(runes[i])
+				if runes[i] == '\\' && i < len(runes)-1 {
+					i++
+					expSb.WriteRune(runes[i])
+				} else if runes[i] == '"' {
+					break
+				}
+			}
+			continue
+		}
+		if char == '\\' && i < len(runes)-1 {
+			switch esc := runes[i+1]; esc {
+			case ')', '\\':
+				expSb.WriteRune(esc)
+				i++
+				continue
+			default:
+				log.Debugf("Ignoring non-escaping backslash @ %d", i)
+			}
+		}
+		expSb.WriteRune(char)
+	}
+	return expSb.String()
+}
+
 func interpolate(d *dataTreeNavigator, context Context, str string) (string, error) {
 	var sb strings.Builder
-	var expSb strings.Builder
-	inExpression := false
-	nestedBracketsCounter := 0
 	runes := []rune(str)
 	for i := 0; i < len(runes); i++ {
 		char := runes[i]
-		if !inExpression {
-			if char == '\\' && i < len(runes)-1 {
-				switch runes[i+1] {
-				case '(':
-					inExpression = true
-					// skip the lparen
-					i++
-					continue
-				case '\\':
-					// skip the escaped backslash
-					i++
-				default:
-					log.Debugf("Ignoring non-escaping backslash @ %v[%d]", str, i)
+		if char == '\\' && i < len(runes)-1 {
+			switch runes[i+1] {
+			case '(':
+				end := findInterpolationEnd(runes, i+2)
+				if end == -1 {
+					log.Warning("unclosed interpolation string, skipping interpolation")
+					return str, nil
 				}
+				expStr := unescapeInterpolationExpression(runes[i+2 : end])
+				log.Debugf("Expression is :%v", expStr)
+				value, err := evaluate(d, context, expStr)
+				if err != nil {
+					return "", err
+				}
+				sb.WriteString(value)
+				i = end
+				continue
+			case '\\':
+				// skip the escaped backslash
+				i++
+			default:
+				log.Debugf("Ignoring non-escaping backslash @ %v[%d]", str, i)
 			}
-			sb.WriteRune(char)
-		} else { // we are in an expression
-			if char == ')' {
-				if nestedBracketsCounter == 0 {
-					// finished the expression!
-					log.Debugf("Expression is :%v", expSb.String())
-					value, err := evaluate(d, context, expSb.String())
-					if err != nil {
-						return "", err
-					}
-					inExpression = false
-					expSb = strings.Builder{} // reset this
-
-					sb.WriteString(value)
-					continue
-				}
-				nestedBracketsCounter--
-			} else if char == '(' {
-				nestedBracketsCounter++
-			} else if char == '\\' && i < len(runes)-1 {
-				switch esc := runes[i+1]; esc {
-				case ')', '\\':
-					// write escaped character
-					expSb.WriteRune(esc)
-					i++
-					continue
-				default:
-					log.Debugf("Ignoring non-escaping backslash @ %v[%d]", str, i)
-				}
-			}
-			expSb.WriteRune(char)
 		}
-	}
-	if inExpression {
-		log.Warning("unclosed interpolation string, skipping interpolation")
-		return str, nil
+		sb.WriteRune(char)
 	}
 	return sb.String(), nil
 }

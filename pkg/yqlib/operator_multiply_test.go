@@ -440,6 +440,33 @@ var multiplyOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
+		description:    "Merge, only existing fields, constructed LHS",
+		subdescription: "When the LHS is built up in the expression itself, rather than read from a document, existing fields are still kept and updated - new fields are still not created.",
+		skipDoc:        true,
+		document:       `{a: {b: 1, c: 2}}`,
+		expression:     `({} | .a.b=3) *? .`,
+		expected: []string{
+			"D0, P[], (!!map)::{a: {b: 1}}\n",
+		},
+	},
+	{
+		description: "Merge, only existing fields, constructed RHS",
+		skipDoc:     true,
+		document:    `{a: {b: 5, c: 2}}`,
+		expression:  `. *? ({} | .a.b=1 | .z=9)`,
+		expected: []string{
+			"D0, P[], (!!map)::{a: {b: 1, c: 2}}\n",
+		},
+	},
+	{
+		description: "Merge, only existing fields, both sides constructed",
+		skipDoc:     true,
+		expression:  `({} | .a.b=3) *? ({} | .a.b=1 | .z=9)`,
+		expected: []string{
+			"D0, P[], (!!map)::a:\n    b: 1\n",
+		},
+	},
+	{
 		description: "Merge, only new fields",
 		document:    `{a: {thing: one, cat: frog}, b: {missing: two, thing: two}}`,
 		expression:  `.a *n .b`,

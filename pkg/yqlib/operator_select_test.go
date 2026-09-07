@@ -13,6 +13,14 @@ var selectOperatorScenarios = []expressionScenario{
 	},
 	{
 		skipDoc:    true,
+		document:   `{}`,
+		expression: `select([.a] | length == 1)`,
+		expected: []string{
+			"D0, P[], (!!map)::{}\n",
+		},
+	},
+	{
+		skipDoc:    true,
 		document:   `cat`,
 		expression: `select(false, true)`,
 		expected: []string{

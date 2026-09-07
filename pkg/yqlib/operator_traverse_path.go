@@ -39,11 +39,11 @@ func traversePathOperator(_ *dataTreeNavigator, context Context, expressionNode 
 // resolveAliasChain follows an alias chain iteratively, returning the
 // first non-alias node. Returns an error if a cycle is detected.
 func resolveAliasChain(node *CandidateNode) (*CandidateNode, error) {
-	if node.Kind != AliasNode {
+	if node == nil || node.Kind != AliasNode {
 		return node, nil
 	}
 	visited := map[*CandidateNode]bool{}
-	for node.Kind == AliasNode {
+	for node != nil && node.Kind == AliasNode {
 		if visited[node] {
 			return nil, fmt.Errorf("alias cycle detected")
 		}
@@ -84,7 +84,7 @@ func traverse(context Context, matchingNode *CandidateNode, operation *Operation
 
 	case SequenceNode:
 		log.Debugf("its a sequence of %v things!", len(matchingNode.Content))
-		return traverseArray(matchingNode, operation, operation.Preferences.(traversePreferences))
+		return traverseArray(context, matchingNode, operation, operation.Preferences.(traversePreferences))
 
 	default:
 		return list.New(), nil
@@ -92,10 +92,6 @@ func traverse(context Context, matchingNode *CandidateNode, operation *Operation
 }
 
 func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	//lhs may update the variable context, we should pass that into the RHS
-	// BUT we still return the original context back (see jq)
-	// https://stedolan.github.io/jq/manual/#Variable/SymbolicBindingOperator:...as$identifier|...
-
 	log.Debugf("--traverseArrayOperator")
 
 	if expressionNode.RHS != nil && expressionNode.RHS.RHS != nil && expressionNode.RHS.RHS.Operation.OperationType == createMapOpType {
@@ -106,33 +102,69 @@ func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode
 		return sliceArrayOperator(d, lhsContext, expressionNode.RHS.RHS)
 	}
 
+	//lhs may update the variable context, we should pass that into the RHS
+	// BUT we still return the original context back (see jq)
+	// https://stedolan.github.io/jq/manual/#Variable/SymbolicBindingOperator:...as$identifier|...
+	// Note lhs is evaluated once, against the whole incoming context (rather than
+	// per candidate below), so that operators which rely on seeing every candidate
+	// in one pass, e.g. `split_doc`'s document numbering, keep working correctly.
 	lhs, err := d.GetMatchingNodes(context, expressionNode.LHS)
 	if err != nil {
 		return Context{}, err
 	}
 
-	// rhs is a collect expression that will yield indices to retrieve of the arrays
-
-	rhs, err := d.GetMatchingNodes(context.ReadOnlyClone(), expressionNode.RHS)
-
-	if err != nil {
-		return Context{}, err
-	}
 	prefs := traversePreferences{}
 
 	if expressionNode.Operation.Preferences != nil {
 		prefs = expressionNode.Operation.Preferences.(traversePreferences)
 	}
-	var indicesToTraverse = rhs.MatchingNodes.Front().Value.(*CandidateNode).Content
 
-	log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+	var matches = list.New()
 
-	//now we traverse the result of the lhs against the indices we found
-	result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
-	if err != nil {
-		return Context{}, err
+	// lhs produces exactly one result per incoming candidate for cardinality
+	// preserving operations (e.g. `.` or `split_doc`), so each lhs candidate can be
+	// paired with the index expression evaluated against that same incoming
+	// candidate. Otherwise (e.g. lhs is constant with respect to the incoming
+	// context, like a variable reference `$o`), every incoming candidate's own
+	// indices are looked up against the whole lhs result instead.
+	pairwise := lhs.MatchingNodes.Len() == context.MatchingNodes.Len()
+	lhsEl := lhs.MatchingNodes.Front()
+
+	// The rhs index expression is evaluated separately for every candidate in the
+	// incoming context (rather than once for the whole context), so that e.g.
+	// `keys[] | $o[.]` looks up every key against $o, instead of only the first one.
+	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
+		singleContext := context.SingleChildContext(el.Value.(*CandidateNode))
+
+		rhs, err := d.GetMatchingNodes(singleContext.ReadOnlyClone(), expressionNode.RHS)
+		if err != nil {
+			return Context{}, err
+		}
+
+		var indicesToTraverse []*CandidateNode
+		if rhs.MatchingNodes.Len() != 0 {
+			indicesToTraverse = rhs.MatchingNodes.Front().Value.(*CandidateNode).Content
+		}
+		log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+
+		if pairwise {
+			newNodes, err := traverseArrayIndices(lhs, lhsEl.Value.(*CandidateNode), indicesToTraverse, prefs)
+			if err != nil {
+				return Context{}, err
+			}
+			matches.PushBackList(newNodes)
+			lhsEl = lhsEl.Next()
+			continue
+		}
+
+		result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
+		if err != nil {
+			return Context{}, err
+		}
+		matches.PushBackList(result.MatchingNodes)
 	}
-	return context.ChildContext(result.MatchingNodes), nil
+
+	return context.ChildContext(matches), nil
 }
 
 func traverseNodesWithArrayIndices(context Context, indicesToTraverse []*CandidateNode, prefs traversePreferences) (Context, error) {
@@ -169,7 +201,7 @@ func traverseArrayIndices(context Context, matchingNode *CandidateNode, indicesT
 
 	switch matchingNode.Kind {
 	case SequenceNode:
-		return traverseArrayWithIndices(matchingNode, indicesToTraverse, prefs)
+		return traverseArrayWithIndices(context, matchingNode, indicesToTraverse, prefs)
 	case MappingNode:
 		return traverseMapWithIndices(context, matchingNode, indicesToTraverse, prefs)
 	}
@@ -196,7 +228,7 @@ func traverseMapWithIndices(context Context, candidate *CandidateNode, indices [
 	return matchingNodeMap, nil
 }
 
-func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, prefs traversePreferences) (*list.List, error) {
+func traverseArrayWithIndices(context Context, node *CandidateNode, indices []*CandidateNode, prefs traversePreferences) (*list.List, error) {
 	log.Debug("traverseArrayWithIndices")
 	var newMatches = list.New()
 	if len(indices) == 0 {
@@ -209,6 +241,8 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 
 	}
 
+	noAutoCreate := prefs.DontAutoCreate || context.DontAutoCreate
+
 	for _, indexNode := range indices {
 		log.Debugf("traverseArrayWithIndices: '%v'", indexNode.Value)
 		index, err := parseInt(indexNode.Value)
@@ -218,6 +252,13 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 		if err != nil {
 			return nil, fmt.Errorf("cannot index array with '%v' (%w)", indexNode.Value, err)
 		}
+
+		if index >= len(node.Content) && noAutoCreate {
+			log.Debugf("no match, returning a detached null for index %v", index)
+			newMatches.PushBack(createDetachedNullChild(node, createScalarNode(index, fmt.Sprintf("%v", index)), false))
+			continue
+		}
+
 		indexToUse := index
 		contentLength := len(node.Content)
 		for contentLength <= index {
@@ -244,6 +285,26 @@ func traverseArrayWithIndices(node *CandidateNode, indices []*CandidateNode, pre
 	return newMatches, nil
 }
 
+// createDetachedNullChild builds a null CandidateNode with Parent/Key metadata
+// set as though it were a child of parent, but without appending it to
+// parent.Content - used for read-only traversal of a missing key/index, so
+// the document is not mutated.
+func createDetachedNullChild(parent *CandidateNode, keyNode *CandidateNode, isMapKey bool) *CandidateNode {
+	valueNode := parent.CreateChild()
+	valueNode.Kind = ScalarNode
+	valueNode.Tag = "!!null"
+	valueNode.Value = "null"
+
+	key := keyNode.Copy()
+	key.SetParent(parent)
+	key.IsMapKey = isMapKey
+
+	valueNode.Key = key
+	valueNode.IsMapKey = false
+
+	return valueNode
+}
+
 func keyMatches(key *CandidateNode, wantedKey string, exactKeyMatch bool) bool {
 	if exactKeyMatch {
 		// this is used for merge
@@ -260,19 +321,27 @@ func traverseMap(context Context, matchingNode *CandidateNode, keyNode *Candidat
 		return nil, err
 	}
 
-	if !splat && !prefs.DontAutoCreate && !context.DontAutoCreate && newMatches.Len() == 0 {
-		log.Debugf("no matches, creating one for %v", NodeToString(keyNode))
-		//no matches, create one automagically
-		valueNode := matchingNode.CreateChild()
-		valueNode.Kind = ScalarNode
-		valueNode.Tag = "!!null"
-		valueNode.Value = "null"
+	if !splat && newMatches.Len() == 0 {
+		var valueNode *CandidateNode
 
-		if len(matchingNode.Content) == 0 {
-			matchingNode.Style = 0
+		if prefs.DontAutoCreate || context.DontAutoCreate {
+			log.Debugf("no matches, returning a detached null for %v", NodeToString(keyNode))
+			valueNode = createDetachedNullChild(matchingNode, keyNode, true)
+			keyNode = valueNode.Key
+		} else {
+			log.Debugf("no matches, creating one for %v", NodeToString(keyNode))
+			//no matches, create one automagically
+			valueNode = matchingNode.CreateChild()
+			valueNode.Kind = ScalarNode
+			valueNode.Tag = "!!null"
+			valueNode.Value = "null"
+
+			if len(matchingNode.Content) == 0 {
+				matchingNode.Style = 0
+			}
+
+			keyNode, valueNode = matchingNode.AddKeyValueChild(keyNode, valueNode)
 		}
-
-		keyNode, valueNode = matchingNode.AddKeyValueChild(keyNode, valueNode)
 
 		if prefs.IncludeMapKeys {
 			newMatches.Set(keyNode.GetKey(), keyNode)
@@ -392,8 +461,8 @@ func traverseMergeAnchor(newMatches *orderedmap.OrderedMap, merge *CandidateNode
 	}
 }
 
-func traverseArray(candidate *CandidateNode, operation *Operation, prefs traversePreferences) (*list.List, error) {
+func traverseArray(context Context, candidate *CandidateNode, operation *Operation, prefs traversePreferences) (*list.List, error) {
 	log.Debugf("operation Value %v", operation.Value)
 	indices := []*CandidateNode{{Value: operation.StringValue}}
-	return traverseArrayWithIndices(candidate, indices, prefs)
+	return traverseArrayWithIndices(context, candidate, indices, prefs)
 }
