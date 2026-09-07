@@ -90,6 +90,25 @@ value:
 message: 'I like an: apple'
 ```
 
+## Interpolation - quoted key
+Keys with special characters (e.g. spaces) need to be quoted, and will still be substituted correctly.
+
+Given a sample.yml file of:
+```yaml
+value: things
+First name: Bill
+```
+then
+```bash
+yq '.message = "Hi \( .["First name"])"' sample.yml
+```
+will output
+```yaml
+value: things
+First name: Bill
+message: Hi Bill
+```
+
 ## To up (upper) case
 Works with unicode characters
 

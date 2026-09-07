@@ -215,6 +215,16 @@ func processEscapeCharacters(original string) string {
 	for i := 0; i < len(runes); i++ {
 		if runes[i] == '\\' && i < len(runes)-1 {
 			next := runes[i+1]
+			// leave a \( ... ) interpolation block untouched: its contents (including any
+			// quoted keys and their own escapes) are re-processed later, when the embedded
+			// expression is itself tokenised and evaluated.
+			if next == '(' {
+				if end := findInterpolationEnd(runes, i+2); end != -1 {
+					result.WriteString(string(runes[i : end+1]))
+					i = end
+					continue
+				}
+			}
 			switch next {
 			case '\\':
 				// Check if followed by opening bracket - if so, preserve both backslashes

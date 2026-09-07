@@ -39,6 +39,41 @@ var stringsOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
+		description:    "Interpolation - quoted key",
+		subdescription: "Keys with special characters (e.g. spaces) need to be quoted, and will still be substituted correctly.",
+		document:       "value: things\nFirst name: Bill",
+		expression:     `.message = "Hi \( .["First name"])"`,
+		expected: []string{
+			"D0, P[], (!!map)::value: things\nFirst name: Bill\nmessage: Hi Bill\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Interpolation - quoted key with parenthesis",
+		document:    "value: things\nSome (thing): Bill",
+		expression:  `.message = "Hi \( .["Some (thing)"])"`,
+		expected: []string{
+			"D0, P[], (!!map)::value: things\nSome (thing): Bill\nmessage: Hi Bill\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Interpolation - quoted key with escaped quote",
+		document:    "value: things\nkey \"with\" quote: Bill",
+		expression:  `.message = "Hi \( .["key \"with\" quote"])"`,
+		expected: []string{
+			"D0, P[], (!!map)::value: things\nkey \"with\" quote: Bill\nmessage: Hi Bill\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Interpolation - regression, plain escaped quote in a non-interpolated string",
+		expression:  `"just a \" escaped quote"`,
+		expected: []string{
+			"D0, P[], (!!str)::just a \" escaped quote\n",
+		},
+	},
+	{
 		skipDoc:     true,
 		description: "Interpolation - don't",
 		document:    `value: things`,

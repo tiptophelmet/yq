@@ -705,6 +705,20 @@ var participleLexerScenarios = []participleLexerScenario{
 		},
 	},
 	{
+		expression: `"Test: \( .["First name"])"`,
+		tokens: []*token{
+			{
+				TokenType: operationToken,
+				Operation: &Operation{
+					OperationType: stringInterpolationOpType,
+					Value:         `Test: \( .["First name"])`,
+					StringValue:   `Test: \( .["First name"])`,
+					Preferences:   nil,
+				},
+			},
+		},
+	},
+	{
 		expression: `"string with a\r"`,
 		tokens: []*token{
 			{
