@@ -7,6 +7,22 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
+const (
+	// a single-quoted-string style character: any non-quote/backslash rune, or an escaped rune.
+	quotedStringContent = `[^"\\]|\\.`
+	// a whole nested double-quoted string, e.g. a bracketed key used inside an interpolation.
+	nestedQuotedString = `"(?:` + quotedStringContent + `)*"`
+	// a character that may appear directly inside a \( ... ) interpolation block: anything
+	// that isn't a paren/quote/backslash, an escape, or an entire nested quoted string. Plain
+	// parens are deliberately excluded here so the block ends at its own matching ")"; unquoted
+	// nested parens (with no quotes involved) still work via the plain escape fallback below.
+	interpolationChar = `[^()"\\]|\\.|` + nestedQuotedString
+	// an interpolation block is atomic: it may contain nested quoted strings (which may
+	// themselves contain escaped quotes or parens) without ending the outer string early.
+	interpolationBlock  = `\\\((?:` + interpolationChar + `)*\)`
+	quotedStringPattern = `"(?:` + interpolationBlock + `|\\.|[^"\\])*"`
+)
+
 var participleYqRules = []*participleYqRule{
 	{"LINE_COMMENT", `line_?comment|lineComment`, opTokenWithPrefs(getCommentOpType, assignCommentOpType, commentOpPreferences{LineComment: true}), 0},
 	{"HEAD_COMMENT", `head_?comment|headComment`, opTokenWithPrefs(getCommentOpType, assignCommentOpType, commentOpPreferences{HeadComment: true}), 0},
@@ -186,7 +202,7 @@ var participleYqRules = []*participleYqRule{
 
 	{"NullValue", `[Nn][Uu][Ll][Ll]|~`, nullValue(), 0},
 
-	{"QuotedStringValue", `"([^"\\]*(\\.[^"\\]*)*)"`, stringValue(), 0},
+	{"QuotedStringValue", quotedStringPattern, stringValue(), 0},
 
 	{"StrEnvOp", `strenv\([^\)]+\)`, envOp(true), 0},
 	{"EnvOp", `env\([^\)]+\)`, envOp(false), 0},
