@@ -122,9 +122,7 @@ b: |
 ## Decode props encoded string
 Given a sample.yml file of:
 ```yaml
-a: |-
-  cats=great
-  dogs=cool as well
+a: "cats=great\ndogs=cool as well"
 ```
 then
 ```bash
@@ -140,9 +138,7 @@ a:
 ## Decode csv encoded string
 Given a sample.yml file of:
 ```yaml
-a: |-
-  cats,dogs
-  great,cool as well
+a: "cats,dogs\ngreat,cool as well"
 ```
 then
 ```bash
@@ -158,9 +154,7 @@ a:
 ## Decode tsv encoded string
 Given a sample.yml file of:
 ```yaml
-a: |-
-  cats	dogs
-  great	cool as well
+a: "cats\tdogs\ngreat\tcool as well"
 ```
 then
 ```bash
