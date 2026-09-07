@@ -514,6 +514,58 @@ var hclFormatScenarios = []formatScenario{
 		expected:     "intdict: {1: {}}\n",
 		scenarioType: "decode",
 	},
+	{
+		description:  "Roundtrip: block with quotes, brackets and dots in string values",
+		skipDoc:      true,
+		input:        "moved {\n  from = \"module[\\\"OLD\\\"].foo\"\n  to = \"module[\\\"NEW\\\"].foo\"\n}",
+		expected:     "moved {\n  from = \"module[\\\"OLD\\\"].foo\"\n  to = \"module[\\\"NEW\\\"].foo\"\n}\n",
+		scenarioType: "roundtrip",
+	},
+	{
+		description:  "Roundtrip: string with backslashes and newlines",
+		skipDoc:      true,
+		input:        "note = \"line one\\nline two\\\\done\"",
+		expected:     "note = \"line one\\nline two\\\\done\"\n",
+		scenarioType: "roundtrip",
+	},
+	{
+		description:  "Roundtrip: nested map two levels deep",
+		skipDoc:      true,
+		input:        "outer {\n  a = 1\n  inner {\n    value = \"deep\"\n  }\n}",
+		expected:     "outer {\n  a = 1\n  inner {\n    value = \"deep\"\n  }\n}\n",
+		scenarioType: "roundtrip",
+	},
+}
+
+var hclJSONRoundTripScenarios = []struct {
+	description string
+	input       string
+}{
+	{
+		description: "simple quoted string values",
+		input:       "moved {\n  from = \"OLD\"\n  to = \"NEW\"\n}",
+	},
+	{
+		description: "string values containing quotes, brackets and dots",
+		input:       "moved {\n  from = \"module[\\\"OLD\\\"].foo\"\n  to = \"module[\\\"NEW\\\"].foo\"\n}",
+	},
+}
+
+// TestHclJSONRoundTrip converts hcl->json->hcl->json and asserts the two JSON
+// documents are byte-identical, regardless of what characters the string values contain.
+func TestHclJSONRoundTrip(t *testing.T) {
+	for _, s := range hclJSONRoundTripScenarios {
+		json1, err := processFormatScenario(formatScenario{input: s.input}, NewHclDecoder(), NewJSONEncoder(ConfiguredJSONPreferences))
+		test.AssertResultWithContext(t, nil, err, s.description)
+
+		hcl2, err := processFormatScenario(formatScenario{input: json1}, NewJSONDecoder(), NewHclEncoder(ConfiguredHclPreferences))
+		test.AssertResultWithContext(t, nil, err, s.description)
+
+		json2, err := processFormatScenario(formatScenario{input: hcl2}, NewHclDecoder(), NewJSONEncoder(ConfiguredJSONPreferences))
+		test.AssertResultWithContext(t, nil, err, s.description)
+
+		test.AssertResultWithContext(t, json1, json2, s.description)
+	}
 }
 
 func testHclScenario(t *testing.T, s formatScenario) {
