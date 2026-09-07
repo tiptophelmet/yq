@@ -111,28 +111,56 @@ func traverseArrayOperator(d *dataTreeNavigator, context Context, expressionNode
 		return Context{}, err
 	}
 
-	// rhs is a collect expression that will yield indices to retrieve of the arrays
-
+	// rhs is a collect expression that yields, for every candidate in the
+	// incoming context, its own list of indices to retrieve from the arrays.
 	rhs, err := d.GetMatchingNodes(context.ReadOnlyClone(), expressionNode.RHS)
-
 	if err != nil {
 		return Context{}, err
 	}
+
 	prefs := traversePreferences{}
 
 	if expressionNode.Operation.Preferences != nil {
 		prefs = expressionNode.Operation.Preferences.(traversePreferences)
 	}
-	var indicesToTraverse = rhs.MatchingNodes.Front().Value.(*CandidateNode).Content
 
-	log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+	var matches = list.New()
 
-	//now we traverse the result of the lhs against the indices we found
-	result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
-	if err != nil {
-		return Context{}, err
+	if lhs.MatchingNodes.Len() == rhs.MatchingNodes.Len() {
+		// lhs produced exactly one candidate per incoming candidate (e.g. a plain
+		// traversal like `.` or `split_doc`), so pair each lhs candidate with the
+		// indices collected for that same incoming candidate. This ensures each
+		// candidate is indexed with the indices computed just for it, e.g.
+		// `keys[] | $o[.]` should look up every key, not just the first one.
+		lhsEl := lhs.MatchingNodes.Front()
+		rhsEl := rhs.MatchingNodes.Front()
+		for lhsEl != nil {
+			indicesToTraverse := rhsEl.Value.(*CandidateNode).Content
+			log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+			newNodes, err := traverseArrayIndices(lhs, lhsEl.Value.(*CandidateNode), indicesToTraverse, prefs)
+			if err != nil {
+				return Context{}, err
+			}
+			matches.PushBackList(newNodes)
+			lhsEl = lhsEl.Next()
+			rhsEl = rhsEl.Next()
+		}
+	} else {
+		// lhs is constant with respect to the incoming context (e.g. a variable
+		// reference like `$o`), so apply each incoming candidate's own indices
+		// against the whole lhs result in turn.
+		for rhsEl := rhs.MatchingNodes.Front(); rhsEl != nil; rhsEl = rhsEl.Next() {
+			indicesToTraverse := rhsEl.Value.(*CandidateNode).Content
+			log.Debugf("indicesToTraverse %v", len(indicesToTraverse))
+			result, err := traverseNodesWithArrayIndices(lhs, indicesToTraverse, prefs)
+			if err != nil {
+				return Context{}, err
+			}
+			matches.PushBackList(result.MatchingNodes)
+		}
 	}
-	return context.ChildContext(result.MatchingNodes), nil
+
+	return context.ChildContext(matches), nil
 }
 
 func traverseNodesWithArrayIndices(context Context, indicesToTraverse []*CandidateNode, prefs traversePreferences) (Context, error) {

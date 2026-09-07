@@ -675,6 +675,20 @@ var traversePathOperatorScenarios = []expressionScenario{
 		expression:    ". = (.x = 1)",
 		expectedError: "alias cycle detected",
 	},
+	{
+		// Regression test: previously the index expression's RHS was only
+		// evaluated against the first of several incoming candidates, so
+		// all but the first index lookup were silently dropped.
+		skipDoc:    true,
+		document:   `[["a","b","c"],["x","y","z"]]`,
+		expression: `.[] | .[0,1]`,
+		expected: []string{
+			"D0, P[0 0], (!!str)::a\n",
+			"D0, P[0 1], (!!str)::b\n",
+			"D0, P[1 0], (!!str)::x\n",
+			"D0, P[1 1], (!!str)::y\n",
+		},
+	},
 }
 
 func TestTraversePathOperatorScenarios(t *testing.T) {
