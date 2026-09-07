@@ -112,6 +112,18 @@ var yamlFormatScenarios = []formatScenario{
 		input:       "field: Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt",
 		expected:    "field: Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt\n",
 	},
+	{
+		description: "multiline string with a supplementary-plane emoji stays a literal block",
+		skipDoc:     true,
+		input:       "longDescription: |\n  Multiline file containing\n\n  🚧\n\n  A \"weird\" utf8 char?\n",
+		expected:    "longDescription: |\n  Multiline file containing\n\n  🚧\n\n  A \"weird\" utf8 char?\n",
+	},
+	{
+		description: "multiline string with a BMP symbol stays a literal block",
+		skipDoc:     true,
+		input:       "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
+		expected:    "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
+	},
 }
 
 var yamlParseScenarios = []expressionScenario{
