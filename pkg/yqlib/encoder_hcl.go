@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hclwrite "github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -283,26 +282,6 @@ func isHCLIdentifierPart(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
 }
 
-func isValidHCLIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	// HCL identifiers must start with a letter or underscore
-	// and contain only letters, digits, underscores, and hyphens
-	for i, r := range s {
-		if i == 0 {
-			if !isHCLIdentifierStart(r) {
-				return false
-			}
-			continue
-		}
-		if !isHCLIdentifierPart(r) {
-			return false
-		}
-	}
-	return true
-}
-
 // tokensForRawHCLExpr produces a minimal token stream for a simple HCL expression so we can
 // write it without introducing quotes (e.g. function calls like upper(message)).
 func tokensForRawHCLExpr(expr string) (hclwrite.Tokens, error) {
@@ -356,16 +335,9 @@ func tokensForRawHCLExpr(expr string) (hclwrite.Tokens, error) {
 // encodeAttribute encodes a value as an HCL attribute
 func (he *hclEncoder) encodeAttribute(body *hclwrite.Body, key string, valueNode *CandidateNode) error {
 	if valueNode.Kind == ScalarNode && valueNode.Tag == "!!str" {
-		// Handle unquoted expressions (as-is, without quotes)
-		if valueNode.Style == 0 {
-			tokens, err := tokensForRawHCLExpr(valueNode.Value)
-			if err != nil {
-				return err
-			}
-			body.SetAttributeRaw(key, tokens)
-			return nil
-		}
-		if valueNode.Style&LiteralStyle != 0 {
+		// Bare expressions (identifiers, function calls, arithmetic) decoded from
+		// unquoted HCL source are re-emitted unquoted, as-is.
+		if valueNode.EncodeHint == EncodeHintRawExpression {
 			tokens, err := tokensForRawHCLExpr(valueNode.Value)
 			if err != nil {
 				return err
@@ -377,16 +349,9 @@ func (he *hclEncoder) encodeAttribute(body *hclwrite.Body, key string, valueNode
 		if valueNode.Style&DoubleQuotedStyle != 0 && strings.Contains(valueNode.Value, "${") {
 			return he.encodeTemplateAttribute(body, key, valueNode.Value)
 		}
-		// Check if unquoted identifier
-		if isValidHCLIdentifier(valueNode.Value) && valueNode.Style == 0 {
-			traversal := hcl.Traversal{
-				hcl.TraverseRoot{Name: valueNode.Value},
-			}
-			body.SetAttributeTraversal(key, traversal)
-			return nil
-		}
 	}
-	// Default: use cty.Value for quoted strings and all other types
+	// Default: always render scalar strings as properly quoted/escaped HCL strings.
+	// Numbers, booleans and null are rendered unquoted via their own cty types.
 	ctyValue, err := nodeToCtyValue(valueNode)
 	if err != nil {
 		return err
@@ -443,50 +408,44 @@ func (he *hclEncoder) encodeTemplateAttribute(body *hclwrite.Body, key string, t
 	return nil
 }
 
-// encodeBlockIfMapping attempts to encode a value as a block. Returns true if it was encoded as a block.
-func (he *hclEncoder) encodeBlockIfMapping(body *hclwrite.Body, key string, valueNode *CandidateNode) bool {
+// wantsSeparateBlocks reports whether a mapping node should be expanded into one
+// block per child (each child key becoming a label), based purely on structure:
+// the decoder marks it with EncodeHintSeparateBlock and every child is itself a
+// non-flow mapping.
+func wantsSeparateBlocks(node *CandidateNode) bool {
+	return node.EncodeHint == EncodeHintSeparateBlock && mappingChildrenAllMappings(node)
+}
+
+// encodeBlockIfMapping decides, from structure alone, whether a value should be
+// rendered as an HCL block (key { ... }) or left for the caller to render as an
+// attribute (key = { ... }). The decision is made and committed before anything
+// is written, so a value is never emitted both ways; any error while writing the
+// chosen block body is a genuine encoding failure, not a signal to fall back.
+func (he *hclEncoder) encodeBlockIfMapping(body *hclwrite.Body, key string, valueNode *CandidateNode) (bool, error) {
 	if valueNode.Kind != MappingNode || valueNode.Style == FlowStyle {
-		return false
+		return false, nil
 	}
 
-	// If EncodeHintSeparateBlock is set, emit children as separate blocks regardless of label extraction
-	if valueNode.EncodeHint == EncodeHintSeparateBlock {
-		if handled, _ := he.encodeMappingChildrenAsBlocks(body, key, valueNode); handled {
-			return true
-		}
+	// EncodeHintSeparateBlock: emit children as separate blocks, one per label.
+	if wantsSeparateBlocks(valueNode) {
+		return true, he.encodeMappingChildrenAsBlocks(body, key, valueNode)
 	}
 
-	// Try to extract block labels from a single-entry mapping chain
+	// A chain of single-entry mappings encodes block labels, e.g. {a: {b: {...}}}.
 	if labels, bodyNode, ok := extractBlockLabels(valueNode); ok {
-		if len(labels) > 1 && mappingChildrenAllMappings(bodyNode) {
+		if len(labels) > 1 && wantsSeparateBlocks(bodyNode) {
 			primaryLabels := labels[:len(labels)-1]
 			nestedType := labels[len(labels)-1]
 			block := body.AppendNewBlock(key, primaryLabels)
-			if handled, err := he.encodeMappingChildrenAsBlocks(block.Body(), nestedType, bodyNode); err == nil && handled {
-				return true
-			}
-			if err := he.encodeNodeAttributes(block.Body(), bodyNode); err == nil {
-				return true
-			}
+			return true, he.encodeMappingChildrenAsBlocks(block.Body(), nestedType, bodyNode)
 		}
 		block := body.AppendNewBlock(key, labels)
-		if err := he.encodeNodeAttributes(block.Body(), bodyNode); err == nil {
-			return true
-		}
+		return true, he.encodeNodeAttributes(block.Body(), bodyNode)
 	}
 
-	// If all child values are mappings, treat each child key as a labelled instance of this block type
-	if handled, _ := he.encodeMappingChildrenAsBlocks(body, key, valueNode); handled {
-		return true
-	}
-
-	// No labels detected, render as unlabelled block
+	// Default: a plain nested map under a key is rendered as an unlabelled block.
 	block := body.AppendNewBlock(key, nil)
-	if err := he.encodeNodeAttributes(block.Body(), valueNode); err == nil {
-		return true
-	}
-
-	return false
+	return true, he.encodeNodeAttributes(block.Body(), valueNode)
 }
 
 // encodeNode encodes a CandidateNode directly to HCL, preserving style information
@@ -500,8 +459,11 @@ func (he *hclEncoder) encodeNode(body *hclwrite.Body, node *CandidateNode) error
 		valueNode := node.Content[i+1]
 		key := keyNode.Value
 
-		// Render as block or attribute depending on value type
-		if he.encodeBlockIfMapping(body, key, valueNode) {
+		isBlock, err := he.encodeBlockIfMapping(body, key, valueNode)
+		if err != nil {
+			return err
+		}
+		if isBlock {
 			continue
 		}
 
@@ -531,18 +493,8 @@ func mappingChildrenAllMappings(node *CandidateNode) bool {
 }
 
 // encodeMappingChildrenAsBlocks emits a block for each mapping child, treating the child key as a label.
-// Returns handled=true when it emitted blocks.
-func (he *hclEncoder) encodeMappingChildrenAsBlocks(body *hclwrite.Body, blockType string, valueNode *CandidateNode) (bool, error) {
-	if !mappingChildrenAllMappings(valueNode) {
-		return false, nil
-	}
-
-	// Only emit as separate blocks if EncodeHintSeparateBlock is set
-	// This allows the encoder to respect the original block structure preserved by the decoder
-	if valueNode.EncodeHint != EncodeHintSeparateBlock {
-		return false, nil
-	}
-
+// Callers must ensure valueNode qualifies (see wantsSeparateBlocks) before calling.
+func (he *hclEncoder) encodeMappingChildrenAsBlocks(body *hclwrite.Body, blockType string, valueNode *CandidateNode) error {
 	for i := 0; i < len(valueNode.Content); i += 2 {
 		childKey := valueNode.Content[i].Value
 		childVal := valueNode.Content[i+1]
@@ -563,7 +515,7 @@ func (he *hclEncoder) encodeMappingChildrenAsBlocks(body *hclwrite.Body, blockTy
 
 				block := body.AppendNewBlock(blockType, labels)
 				if err := he.encodeNodeAttributes(block.Body(), grandchildVal); err != nil {
-					return true, err
+					return err
 				}
 			}
 		} else {
@@ -575,12 +527,12 @@ func (he *hclEncoder) encodeMappingChildrenAsBlocks(body *hclwrite.Body, blockTy
 			}
 			block := body.AppendNewBlock(blockType, labels)
 			if err := he.encodeNodeAttributes(block.Body(), childVal); err != nil {
-				return true, err
+				return err
 			}
 		}
 	}
 
-	return true, nil
+	return nil
 }
 
 // encodeNodeAttributes encodes the attributes of a mapping node (used for blocks)
@@ -594,8 +546,11 @@ func (he *hclEncoder) encodeNodeAttributes(body *hclwrite.Body, node *CandidateN
 		valueNode := node.Content[i+1]
 		key := keyNode.Value
 
-		// Render as block or attribute depending on value type
-		if he.encodeBlockIfMapping(body, key, valueNode) {
+		isBlock, err := he.encodeBlockIfMapping(body, key, valueNode)
+		if err != nil {
+			return err
+		}
+		if isBlock {
 			continue
 		}
 

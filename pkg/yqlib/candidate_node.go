@@ -41,6 +41,11 @@ const (
 	// EncodeHintInline forces the node to be emitted as an inline / flow table
 	// (used by TOML inline-table decoder and TOML encoder).
 	EncodeHintInline
+	// EncodeHintRawExpression marks a scalar node whose value was decoded from a
+	// bare, unquoted expression (an identifier, function call, or arithmetic
+	// expression) so the HCL encoder can re-emit it unquoted instead of as a
+	// quoted string.
+	EncodeHintRawExpression
 )
 
 func createStringScalarNode(stringValue string) *CandidateNode {

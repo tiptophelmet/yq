@@ -374,33 +374,32 @@ func convertHclExprToNode(expr hclsyntax.Expression, src []byte) *CandidateNode 
 		return node
 	case *hclsyntax.ScopeTraversalExpr:
 		// Simple identifier/traversal (e.g. unquoted string literal in HCL)
+		text := ""
 		r := e.Range()
 		start := r.Start.Byte
 		end := r.End.Byte
 		if start >= 0 && end >= start && end <= len(src) {
-			text := strings.TrimSpace(string(src[start:end]))
-			return createStringScalarNode(text)
-		}
-		// Fallback to root name if source unavailable
-		if len(e.Traversal) > 0 {
+			text = strings.TrimSpace(string(src[start:end]))
+		} else if len(e.Traversal) > 0 {
+			// Fallback to root name if source unavailable
 			if root, ok := e.Traversal[0].(hcl.TraverseRoot); ok {
-				return createStringScalarNode(root.Name)
+				text = root.Name
 			}
 		}
-		return createStringScalarNode("")
+		node := createStringScalarNode(text)
+		node.EncodeHint = EncodeHintRawExpression
+		return node
 	case *hclsyntax.FunctionCallExpr:
 		// Preserve function calls as raw expressions for roundtrip
 		r := e.Range()
 		start := r.Start.Byte
 		end := r.End.Byte
+		text := e.Name
 		if start >= 0 && end >= start && end <= len(src) {
-			text := strings.TrimSpace(string(src[start:end]))
-			node := createStringScalarNode(text)
-			node.Style = 0
-			return node
+			text = strings.TrimSpace(string(src[start:end]))
 		}
-		node := createStringScalarNode(e.Name)
-		node.Style = 0
+		node := createStringScalarNode(text)
+		node.EncodeHint = EncodeHintRawExpression
 		return node
 	default:
 		// try to evaluate the expression (handles unary, binary ops, etc.)
@@ -415,9 +414,9 @@ func convertHclExprToNode(expr hclsyntax.Expression, src []byte) *CandidateNode 
 		end := r.End.Byte
 		if start >= 0 && end >= start && end <= len(src) {
 			text := string(src[start:end])
-			// Mark as unquoted expression so encoder emits without quoting
+			// Mark as a raw expression so the encoder emits it without quoting
 			node := createStringScalarNode(text)
-			node.Style = 0
+			node.EncodeHint = EncodeHintRawExpression
 			return node
 		}
 		return createStringScalarNode(fmt.Sprintf("%v", expr))
