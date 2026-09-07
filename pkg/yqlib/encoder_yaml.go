@@ -64,11 +64,11 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 	unicodeWorkaround := newSupplementaryRuneWorkaround()
 	unicodeWorkaround.remapNode(target)
 
-	destination := writer
-	tempBuffer := bytes.NewBuffer(nil)
-	if ye.prefs.ColorsEnabled || unicodeWorkaround.active() {
-		destination = tempBuffer
-	}
+	// Always buffered. Both post-encoding passes below — restoring the
+	// remapped runes, and re-indenting a single-quoted scalar's closing
+	// quote — work on the finished bytes, so the document cannot stream
+	// straight to the writer regardless of colour or workaround state.
+	destination := bytes.NewBuffer(nil)
 
 	indent := ye.prefs.Indent
 	if indent < 2 {
@@ -99,11 +99,67 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 		return err
 	}
 
+	// Restore before re-indenting, not after: the indent fix measures
+	// leading spaces on the bytes it is handed, and restoring the original
+	// runes is what makes those bytes final. Reversing the order would
+	// re-indent a document that still contained placeholders.
+	encoded := fixSingleQuotedClosingIndent(unicodeWorkaround.restore(destination.Bytes()))
+
 	if ye.prefs.ColorsEnabled {
-		return colorizeAndPrint(unicodeWorkaround.restore(tempBuffer.Bytes()), writer)
+		return colorizeAndPrint(encoded, writer)
 	}
-	if unicodeWorkaround.active() {
-		return writeString(writer, string(unicodeWorkaround.restore(tempBuffer.Bytes())))
+	return writeString(writer, string(encoded))
+}
+
+// fixSingleQuotedClosingIndent corrects the closing quote line of a block-style
+// single-quoted scalar whose value ends with a blank line. go-yaml emits that
+// closing quote flush against column 0 instead of lining it up with the rest of
+// the scalar's continuation lines, which some YAML tools reject. This walks the
+// already-encoded document line by line, tracking single-quoted scalars that
+// span multiple lines, and re-indents an under-indented lone closing quote to
+// match the indentation of the scalar's most recent non-blank continuation line.
+func fixSingleQuotedClosingIndent(data []byte) []byte {
+	lines := strings.Split(string(data), "\n")
+
+	inSingleQuoted := false
+	continuationIndent := 0
+
+	for i, rawLine := range lines {
+		line := rawLine
+		hasCR := strings.HasSuffix(line, "\r")
+		if hasCR {
+			line = line[:len(line)-1]
+		}
+
+		// doubled '' is an escaped literal quote inside the scalar, not a delimiter
+		quoteCount := strings.Count(strings.ReplaceAll(line, "''", ""), "'")
+		closesHere := inSingleQuoted && quoteCount%2 == 1
+
+		if inSingleQuoted {
+			trimmed := strings.TrimSpace(line)
+			switch {
+			case closesHere && trimmed == "'":
+				leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
+				if leadingSpaces < continuationIndent {
+					newLine := strings.Repeat(" ", continuationIndent) + strings.TrimLeft(line, " ")
+					if hasCR {
+						newLine += "\r"
+					}
+					lines[i] = newLine
+				}
+			case !closesHere && trimmed != "":
+				continuationIndent = len(line) - len(strings.TrimLeft(line, " "))
+			}
+
+			if closesHere {
+				inSingleQuoted = false
+				continuationIndent = 0
+			}
+		} else if quoteCount%2 == 1 {
+			inSingleQuoted = true
+			continuationIndent = 0
+		}
 	}
-	return nil
+
+	return []byte(strings.Join(lines, "\n"))
 }

@@ -113,6 +113,24 @@ var yamlFormatScenarios = []formatScenario{
 		expected:    "field: Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt\n",
 	},
 	{
+		description: "single quoted multi-line scalar ending with a blank line keeps closing quote indented",
+		skipDoc:     true,
+		input:       "paths:\n  /v1/quack:\n    get:\n      description: '\n        Get quacked.\n\n        - Duck\n\n        '\n",
+		expected:    "paths:\n  /v1/quack:\n    get:\n      description: ' Get quacked.\n\n        - Duck\n\n        '\n",
+	},
+	{
+		description: "single quoted multi-line scalar not ending with a blank line is unchanged",
+		skipDoc:     true,
+		input:       "description: '\n  Get quacked.\n\n  - Duck'\n",
+		expected:    "description: ' Get quacked.\n\n  - Duck'\n",
+	},
+	{
+		description: "single quoted multi-line scalar with a doubled quote escape is unchanged",
+		skipDoc:     true,
+		input:       "description: '\n  Get quacked, it''s fine.\n\n  - Duck'\n",
+		expected:    "description: ' Get quacked, it''s fine.\n\n  - Duck'\n",
+	},
+	{
 		description: "multiline string with a supplementary-plane emoji stays a literal block",
 		skipDoc:     true,
 		input:       "longDescription: |\n  Multiline file containing\n\n  🚧\n\n  A \"weird\" utf8 char?\n",
