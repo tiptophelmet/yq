@@ -3,6 +3,7 @@ package yqlib
 import (
 	"container/list"
 	"fmt"
+	"unicode"
 )
 
 func parseStyle(customStyle string) (Style, error) {
@@ -65,10 +66,26 @@ func assignStyleOperator(d *dataTreeNavigator, context Context, expressionNode *
 			}
 		}
 
-		candidate.Style = style
+		candidate.Style = resolveStyle(candidate, style)
 	}
 
 	return context, nil
+}
+
+// resolveStyle keeps a double quoted style when the caller is clearing the
+// style (style == 0) on a scalar whose value cannot be represented without
+// escaping (e.g. contains a newline) - otherwise a plain/block reset would
+// reshape the value instead of just tidying the quotes.
+func resolveStyle(candidate *CandidateNode, style Style) Style {
+	if style != 0 || candidate.Kind != ScalarNode || candidate.Style != DoubleQuotedStyle {
+		return style
+	}
+	for _, r := range candidate.Value {
+		if r == '\n' || r == '\r' || r == '\t' || !unicode.IsPrint(r) {
+			return DoubleQuotedStyle
+		}
+	}
+	return style
 }
 
 func getStyleOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {

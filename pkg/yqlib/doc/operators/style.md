@@ -273,11 +273,11 @@ will output
 ```
 
 ## Reset style - or pretty print
-Set empty (default) quote style, note the usage of `...` to match keys too. Note that there is a `--prettyPrint/-P` short flag for this.
+Set empty (default) quote style, note the usage of `...` to match keys too. Note that there is a `--prettyPrint/-P` short flag for this. Note that double quoted strings that need to escape characters (e.g. a newline) will keep their double quotes.
 
 Given a sample.yml file of:
 ```yaml
-{a: cat, "b": 5, 'c': 3.2, "e": true,  f: [1,2,3], "g": { something: "cool"} }
+{a: cat, "b": 5, 'c': 3.2, "e": true,  f: [1,2,3], "g": { something: "cool"}, "h": "double\nquote" }
 ```
 then
 ```bash
@@ -295,6 +295,7 @@ f:
   - 3
 g:
   something: cool
+h: "double\nquote"
 ```
 
 ## Set style relatively with assign-update
