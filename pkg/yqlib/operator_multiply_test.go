@@ -96,6 +96,17 @@ var mergeWithGlobB = `
 "**cat": newThings,
 `
 
+var mergeOnlyNewFieldsCommentsDoc = `# foo head comment
+foo: 1 # foo line comment
+
+# bar head comment
+bar: # bar line comment
+  # baz head comment
+  baz: # baz line comment
+    # yolo head comment
+    yolo: 2 # yolo line comment
+`
+
 var multiplyOperatorScenarios = []expressionScenario{
 	{
 		description: "multiple should be readonly",
@@ -472,6 +483,34 @@ var multiplyOperatorScenarios = []expressionScenario{
 		expression:  `.a *n .b`,
 		expected: []string{
 			"D0, P[a], (!!map)::{thing: one, cat: frog, missing: two}\n",
+		},
+	},
+	{
+		description: "Merge, only new fields, keeps comments on newly added keys",
+		skipDoc:     true,
+		document:    mergeOnlyNewFieldsCommentsDoc,
+		expression:  `{} * .`,
+		expected: []string{
+			"D0, P[], (!!map)::# foo head comment\nfoo: 1 # foo line comment\n# bar head comment\nbar: # bar line comment\n    # baz head comment\n    baz: # baz line comment\n        # yolo head comment\n        yolo: 2 # yolo line comment\n",
+		},
+	},
+	{
+		description: "Merge, only new fields, keeps comments on newly added keys (n variant matches plain merge)",
+		skipDoc:     true,
+		document:    mergeOnlyNewFieldsCommentsDoc,
+		expression:  `{} *n .`,
+		expected: []string{
+			"D0, P[], (!!map)::# foo head comment\nfoo: 1 # foo line comment\n# bar head comment\nbar: # bar line comment\n    # baz head comment\n    baz: # baz line comment\n        # yolo head comment\n        yolo: 2 # yolo line comment\n",
+		},
+	},
+	{
+		description: "Merge, only new fields, leaves comments on existing keys untouched",
+		skipDoc:     true,
+		document:    "a: 1 # a original comment\nb: 2",
+		document2:   "a: 2 # a incoming comment\nb: 3",
+		expression:  `select(fi == 0) *n select(fi == 1)`,
+		expected: []string{
+			"D0, P[], (!!map)::a: 1 # a original comment\nb: 2\n",
 		},
 	},
 	{
