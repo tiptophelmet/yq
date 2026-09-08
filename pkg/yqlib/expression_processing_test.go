@@ -201,6 +201,12 @@ var pathTests = []struct {
 		append(make([]interface{}, 0), "key", "array", "SHORT_PIPE", "key", "array2", "SHORT_PIPE", "ADD"),
 	},
 	{
+		// chained + is left-associative: postfix must be `a b ADD c ADD`, i.e. (a + b) + c
+		`.a + .b + .c`,
+		append(make([]interface{}, 0), "a", "ADD", "b", "ADD", "c"),
+		append(make([]interface{}, 0), "a", "b", "ADD", "c", "ADD"),
+	},
+	{
 		`.key.array * .key.array2`,
 		append(make([]interface{}, 0), "key", "SHORT_PIPE", "array", "MULTIPLY", "key", "SHORT_PIPE", "array2"),
 		append(make([]interface{}, 0), "key", "array", "SHORT_PIPE", "key", "array2", "SHORT_PIPE", "MULTIPLY"),

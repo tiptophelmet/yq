@@ -334,3 +334,16 @@ a: !horse 3.5
 b: !goat 2.3
 ```
 
+## Chained add of maps to sequence
+Chained `+` is evaluated left to right, so each map is appended as its own element.
+
+Running
+```bash
+yq --null-input '[] + {"a": 1} + {"b": 2}'
+```
+will output
+```yaml
+- a: 1
+- b: 2
+```
+
