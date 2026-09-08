@@ -14,6 +14,54 @@ import (
 	"github.com/goccy/go-json"
 )
 
+// jsonKeyString returns the JSON object key to use for the given YAML map key
+// node. Scalar keys use their Value directly. YAML also allows maps and
+// sequences to be used as keys; those have an empty Value, so rendering them
+// naively would collapse every complex key down to "". Instead they are
+// rendered as a compact, single-line flow-style YAML string (e.g. "{}",
+// "[1, 2]") so that each complex key stays distinct and readable in the
+// JSON output.
+func jsonKeyString(key *CandidateNode) (string, error) {
+	if key == nil {
+		return "", nil
+	}
+
+	node := key
+	if node.Kind == AliasNode {
+		node = node.Alias
+	}
+
+	if node == nil || (node.Kind != MappingNode && node.Kind != SequenceNode) {
+		return key.Value, nil
+	}
+
+	rendered, err := renderNodeAsFlowKey(node)
+	if err != nil || rendered == "" {
+		// never let a complex key abort the encode of an otherwise valid document
+		return key.Value, nil
+	}
+	return rendered, nil
+}
+
+func renderNodeAsFlowKey(node *CandidateNode) (string, error) {
+	prefs := ConfiguredYamlPreferences.Copy()
+	prefs.PrintDocSeparators = false
+	prefs.ColorsEnabled = false
+
+	clone := node.Copy()
+	clone.Style = FlowStyle
+	clone.LeadingContent = ""
+	clone.HeadComment = ""
+	clone.LineComment = ""
+	clone.FootComment = ""
+
+	buf := new(bytes.Buffer)
+	if err := NewYamlEncoder(prefs).Encode(buf, clone); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
 func (o *CandidateNode) setScalarFromJson(value interface{}) error {
 	o.Kind = ScalarNode
 	switch rawData := value.(type) {
@@ -159,7 +207,11 @@ func (o *CandidateNode) MarshalJSON() ([]byte, error) {
 		log.Debugf("MarshalJSON MappingNode")
 		buf.WriteByte('{')
 		for i := 0; i < len(o.Content); i += 2 {
-			if err := enc.Encode(o.Content[i].Value); err != nil {
+			keyString, err := jsonKeyString(o.Content[i])
+			if err != nil {
+				return nil, err
+			}
+			if err := enc.Encode(keyString); err != nil {
 				return nil, err
 			}
 			buf.WriteByte(':')

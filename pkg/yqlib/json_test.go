@@ -190,6 +190,22 @@ var jsonScenarios = []formatScenario{
 		scenarioType: "encode",
 	},
 	{
+		description:    "Encode json: complex map keys",
+		subdescription: "YAML allows maps and sequences to be used as keys; these are rendered as a compact flow-style string so each key stays distinct and non-empty.",
+		input:          "{}:\n{x}:\n[x]:\n",
+		indent:         0,
+		expected:       "{\"{}\":null,\"{x: ''}\":null,\"[x]\":null}\n",
+		scenarioType:   "encode",
+	},
+	{
+		description:  "Encode json: sequence map key",
+		skipDoc:      true,
+		input:        "[1, 2]: value",
+		indent:       0,
+		expected:     "{\"[1, 2]\":\"value\"}\n",
+		scenarioType: "encode",
+	},
+	{
 		description:  "Encode json: signed hex int",
 		skipDoc:      true,
 		input:        `+0x12`,
