@@ -528,6 +528,46 @@ var addOperatorScenarios = []expressionScenario{
 		expectedError: "!!seq () cannot be added to a !!str (a)",
 	},
 	{
+		description:    "Chained add of maps to sequence",
+		subdescription: "Chained `+` is evaluated left to right, so each map is appended as its own element.",
+		expression:     `[] + {"a": 1} + {"b": 2}`,
+		expected: []string{
+			"D0, P[], (!!seq)::- a: 1\n- b: 2\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Chained add of maps to sequence, three deep",
+		expression:  `[] + {"a": 1} + {"b": 2} + {"c": 3}`,
+		expected: []string{
+			"D0, P[], (!!seq)::- a: 1\n- b: 2\n- c: 3\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Chained add of scalars to sequence",
+		expression:  `[] + 1 + 2`,
+		expected: []string{
+			"D0, P[], (!!seq)::- 1\n- 2\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Chained number addition is left-associative",
+		expression:  `1 + 2 + 3`,
+		expected: []string{
+			"D0, P[], (!!int)::6\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Mixed arithmetic operators keep evaluating left-to-right",
+		expression:  `2 * 3 + 1`,
+		expected: []string{
+			"D0, P[], (!!int)::7\n",
+		},
+	},
+	{
 		// Regression test for https://issues.oss-fuzz.com/issues/383860504
 		// Adding a map to itself must not panic when sequence keys contain
 		// single-entry mappings with a null key in one and a non-null key

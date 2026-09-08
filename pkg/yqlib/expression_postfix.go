@@ -110,11 +110,14 @@ func (p *expressionPostFixerImpl) ConvertToPostfix(infixTokens []*token) ([]*Ope
 			opStack = opStack[0 : len(opStack)-1]
 
 		default:
-			var currentPrecedence = currentToken.Operation.OperationType.Precedence
+			var currentOpType = currentToken.Operation.OperationType
+			var currentPrecedence = currentOpType.Precedence
 			// pop off higher precedent operators onto the result
+			// (or equal precedent operators, when the current operator is left-associative)
 			for len(opStack) > 0 &&
 				opStack[len(opStack)-1].TokenType == operationToken &&
-				opStack[len(opStack)-1].Operation.OperationType.Precedence > currentPrecedence {
+				(opStack[len(opStack)-1].Operation.OperationType.Precedence > currentPrecedence ||
+					(currentOpType.LeftAssociative && opStack[len(opStack)-1].Operation.OperationType.Precedence == currentPrecedence)) {
 				opStack, result = popOpToResult(opStack, result)
 			}
 			// add this operator to the opStack

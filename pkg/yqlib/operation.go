@@ -15,6 +15,7 @@ type operationType struct {
 	Type                 string
 	NumArgs              uint // number of arguments to the op
 	Precedence           uint
+	LeftAssociative      bool // when true, operators of equal precedence are evaluated left-to-right
 	Handler              operatorHandler
 	CheckForPostTraverse bool
 	ToString             func(o *Operation) string
@@ -58,15 +59,15 @@ var assignCommentOpType = &operationType{Type: "ASSIGN_COMMENT", NumArgs: 2, Pre
 var assignAnchorOpType = &operationType{Type: "ASSIGN_ANCHOR", NumArgs: 2, Precedence: 40, Handler: assignAnchorOperator}
 var assignAliasOpType = &operationType{Type: "ASSIGN_ALIAS", NumArgs: 2, Precedence: 40, Handler: assignAliasOperator}
 
-var multiplyOpType = &operationType{Type: "MULTIPLY", NumArgs: 2, Precedence: 42, Handler: multiplyOperator}
+var multiplyOpType = &operationType{Type: "MULTIPLY", NumArgs: 2, Precedence: 42, LeftAssociative: true, Handler: multiplyOperator}
 var multiplyAssignOpType = &operationType{Type: "MULTIPLY_ASSIGN", NumArgs: 2, Precedence: 42, Handler: multiplyAssignOperator}
 
-var divideOpType = &operationType{Type: "DIVIDE", NumArgs: 2, Precedence: 42, Handler: divideOperator}
+var divideOpType = &operationType{Type: "DIVIDE", NumArgs: 2, Precedence: 42, LeftAssociative: true, Handler: divideOperator}
 
-var moduloOpType = &operationType{Type: "MODULO", NumArgs: 2, Precedence: 42, Handler: moduloOperator}
+var moduloOpType = &operationType{Type: "MODULO", NumArgs: 2, Precedence: 42, LeftAssociative: true, Handler: moduloOperator}
 
-var addOpType = &operationType{Type: "ADD", NumArgs: 2, Precedence: 42, Handler: addOperator}
-var subtractOpType = &operationType{Type: "SUBTRACT", NumArgs: 2, Precedence: 42, Handler: subtractOperator}
+var addOpType = &operationType{Type: "ADD", NumArgs: 2, Precedence: 42, LeftAssociative: true, Handler: addOperator}
+var subtractOpType = &operationType{Type: "SUBTRACT", NumArgs: 2, Precedence: 42, LeftAssociative: true, Handler: subtractOperator}
 var alternativeOpType = &operationType{Type: "ALTERNATIVE", NumArgs: 2, Precedence: 42, Handler: alternativeOperator}
 
 var equalsOpType = &operationType{Type: "EQUALS", NumArgs: 2, Precedence: 40, Handler: equalsOperator}

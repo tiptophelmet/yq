@@ -67,6 +67,14 @@ var subtractOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
+		skipDoc:     true,
+		description: "Chained subtraction is left-associative",
+		expression:  `10 - 2 - 3`,
+		expected: []string{
+			"D0, P[], (!!int)::5\n",
+		},
+	},
+	{
 		description:    "Number subtraction - float",
 		subdescription: "If the lhs or rhs are floats then the expression will be calculated with floats.",
 		document:       `{a: 3, b: 4.5}`,
