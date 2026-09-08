@@ -81,7 +81,7 @@ func (o *CandidateNode) UnmarshalJSON(data []byte) error {
 			if err := dec.Decode(childValue); err != nil {
 				return err
 			}
-			o.Content = append(o.Content, childKey, childValue)
+			o.MergeKeyValueChild(childKey, childValue)
 		}
 		// unexpected error
 		if err != nil && !errors.Is(err, io.EOF) {

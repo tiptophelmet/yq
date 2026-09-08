@@ -177,6 +177,21 @@ var yamlParseScenarios = []expressionScenario{
 			"D0, P[], (!!map)::a: !horse [a]\n",
 		},
 	},
+	{
+		description: "duplicate keys, last value wins",
+		document:    `{"foo":1,"foo":2}`,
+		expected: []string{
+			"D0, P[], (!!map)::{\"foo\": 2}\n",
+		},
+	},
+	{
+		description: "duplicate keys, last value wins, pretty printed",
+		document:    `{"foo":1,"foo":2}`,
+		expression:  `... style=""`,
+		expected: []string{
+			"D0, P[], (!!map)::foo: 2\n",
+		},
+	},
 }
 
 func testYamlScenario(t *testing.T, s formatScenario) {

@@ -119,7 +119,7 @@ func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*Can
 		log.Debugf("UnmarshalYAML -  a mapping node")
 		o.Kind = MappingNode
 		o.copyFromYamlNode(node, anchorMap)
-		o.Content = make([]*CandidateNode, len(node.Content))
+		o.Content = nil
 		for i := 0; i < len(node.Content); i += 2 {
 
 			keyNode, err := o.decodeIntoChild(node.Content[i], anchorMap)
@@ -134,10 +134,7 @@ func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*Can
 				return err
 			}
 
-			valueNode.Key = keyNode
-
-			o.Content[i] = keyNode
-			o.Content[i+1] = valueNode
+			o.MergeKeyValueChild(keyNode, valueNode)
 		}
 		log.Debugf("UnmarshalYAML -  finished mapping node")
 		return nil
