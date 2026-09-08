@@ -296,6 +296,33 @@ var commentOperatorScenarios = []expressionScenario{
 			"D0, P[], (!!null)::%YAML 1.1\n# hi\n",
 		},
 	},
+	{
+		skipDoc:     true,
+		description: "Get foot comment of a nested map entry, not the duplicated key node",
+		document:    "a:\n  - b: \"1\" # xyz\n    # abc\n",
+		expression:  `.a[0].b | foot_comment`,
+		expected: []string{
+			"D0, P[a 0 b], (!!str)::abc\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Set foot comment of a nested map entry replaces the old one, no duplicate left behind",
+		document:    "a:\n  - b: \"1\" # xyz\n    # abc\n",
+		expression:  `.a[0].b foot_comment = "def"`,
+		expected: []string{
+			"D0, P[], (!!map)::a:\n    - b: \"1\" # xyz\n      # def\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Recursive descent no longer reports the foot comment against two duplicate paths",
+		document:    "a:\n  - b: \"1\" # xyz\n    # abc\n",
+		expression:  `[... | select(foot_comment == "abc") | (path | join("."))]`,
+		expected: []string{
+			"D0, P[], (!!seq)::- a.0.b\n",
+		},
+	},
 }
 
 func TestCommentOperatorScenarios(t *testing.T) {

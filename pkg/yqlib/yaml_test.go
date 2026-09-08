@@ -37,6 +37,12 @@ var yamlFormatScenarios = []formatScenario{
 		input:       "# hello",
 		expected:    "# hello\n",
 	},
+	{
+		description: "foot comment on nested map entry round trips without duplication",
+		skipDoc:     true,
+		input:       "a:\n  - b: \"1\" # xyz\n    # abc\n",
+		expected:    "a:\n  - b: \"1\" # xyz\n    # abc\n",
+	},
 
 	{
 		description: "scalar with doc separator",
