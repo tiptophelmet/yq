@@ -5,7 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/mikefarah/yq/v4/pkg/yqlib"
 	"github.com/spf13/cobra"
@@ -250,6 +253,42 @@ func maybeFile(str string) bool {
 	return result
 }
 
+// looksLikeExpression returns true when arg is unambiguously yq expression
+// syntax rather than a path, so it should never be mistaken for a file even
+// when a same-named file exists on disk (see the '.version' issue).
+func looksLikeExpression(arg string) bool {
+	if arg == "" {
+		return false
+	}
+
+	pathSeparators := "/"
+	if runtime.GOOS == "windows" {
+		pathSeparators = "/\\"
+	}
+	if strings.ContainsAny(arg, pathSeparators) {
+		return false
+	}
+
+	if strings.HasPrefix(arg, "$") || strings.HasPrefix(arg, "(") || strings.Contains(arg, "|") {
+		return true
+	}
+
+	if !strings.HasPrefix(arg, ".") {
+		return false
+	}
+
+	rest := arg[1:]
+	if rest == "" {
+		return true
+	}
+	switch rest[0] {
+	case '[', '"', '*', '.':
+		return true
+	}
+	r, _ := utf8.DecodeRuneInString(rest)
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
 func processStdInArgs(args []string) []string {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
@@ -299,10 +338,21 @@ func processArgs(originalArgs []string) (string, []string, error) {
 	}
 
 	yqlib.GetLogger().Debugf("processed args: %v", args)
-	if expression == "" && len(args) > 0 && args[0] != "-" && !maybeFile(args[0]) {
-		yqlib.GetLogger().Debugf("assuming expression is '%v'", args[0])
-		expression = args[0]
-		args = args[1:]
+	if expression == "" && len(args) > 0 && args[0] != "-" {
+		firstArgIsExpression := looksLikeExpression(args[0])
+		firstArgIsFile := maybeFile(args[0])
+
+		if firstArgIsExpression && firstArgIsFile {
+			yqlib.GetLogger().Warningf(
+				"'%v' looks like both an expression and an existing file; treating it as an expression. "+
+					"Use --expression, or an explicit file path, to force the other reading.", args[0])
+		}
+
+		if firstArgIsExpression || !firstArgIsFile {
+			yqlib.GetLogger().Debugf("assuming expression is '%v'", args[0])
+			expression = args[0]
+			args = args[1:]
+		}
 	}
 	return expression, args, nil
 }
