@@ -88,6 +88,14 @@ g:
 		},
 	},
 	{
+		description: "Set literal quote style, preserving trailing whitespace before a newline",
+		document:    `a: "good \"bye \n    cruel\" world!"`,
+		expression:  `.a style="literal"`,
+		expected: []string{
+			"D0, P[], (!!map)::a: |-\n    good \"bye \n        cruel\" world!\n",
+		},
+	},
+	{
 		description: "Set folded quote style",
 		document:    `{a: cat, b: 5, c: 3.2, e: true, f: [1,2,3], g: { something: cool}}`,
 		expression:  `.. style="folded"`,
