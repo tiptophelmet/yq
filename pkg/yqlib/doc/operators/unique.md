@@ -129,3 +129,21 @@ will output
   - sheep
 ```
 
+## Unique ignores comments between duplicate objects
+A comment sitting between two otherwise identical entries does not stop them being deduplicated.
+
+Given a sample.yml file of:
+```yaml
+- id: 1001
+# Comment
+- id: 1001
+```
+then
+```bash
+yq 'unique' sample.yml
+```
+will output
+```yaml
+- id: 1001
+```
+

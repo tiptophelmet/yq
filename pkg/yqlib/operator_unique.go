@@ -66,8 +66,19 @@ func getUniqueKeyValue(rhs Context) (string, error) {
 		keyCandidate := first.Value.(*CandidateNode)
 		keyValue = keyCandidate.Value
 		if keyCandidate.Kind != ScalarNode {
-			keyValue, err = encodeToString(keyCandidate, encoderPreferences{YamlFormat, 0})
+			commentlessCopy := keyCandidate.Copy()
+			stripComments(commentlessCopy)
+			keyValue, err = encodeToString(commentlessCopy, encoderPreferences{YamlFormat, 0})
 		}
 	}
 	return keyValue, err
+}
+
+func stripComments(node *CandidateNode) {
+	node.HeadComment = ""
+	node.LineComment = ""
+	node.FootComment = ""
+	for _, child := range node.Content {
+		stripComments(child)
+	}
 }
