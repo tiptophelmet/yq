@@ -401,3 +401,32 @@ will output
 hello = "foo"
 ```
 
+## Roundtrip: dotted sub-table declared after a sibling table keeps its declared position
+Given a sample.toml file of:
+```toml
+[a]
+x = 1
+
+[b]
+y = 1
+
+[a.c]
+z = 1
+
+```
+then
+```bash
+yq '.' sample.toml
+```
+will output
+```yaml
+[a]
+x = 1
+
+[b]
+y = 1
+
+[a.c]
+z = 1
+```
+

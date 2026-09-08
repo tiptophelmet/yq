@@ -399,6 +399,8 @@ func (dec *tomlDecoder) processTable(currentNode *toml.Node) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	shape := dec.parser.Shape(currentNode.Raw)
+	dec.setSectionPosition(c, fullPath, false, shape.Start.Line, shape.Start.Column)
 	return runAgainstCurrentExp, nil
 }
 
@@ -504,8 +506,44 @@ func (dec *tomlDecoder) processArrayTable(currentNode *toml.Node) (bool, error) 
 
 	// += function
 	err = dec.arrayAppend(c, fullPath, tableNodeValue)
+	if err != nil {
+		return runAgainstCurrentExp, err
+	}
 
-	return runAgainstCurrentExp, err
+	shape := dec.parser.Shape(currentNode.Raw)
+	dec.setSectionPosition(c, fullPath, true, shape.Start.Line, shape.Start.Column)
+
+	return runAgainstCurrentExp, nil
+}
+
+// setSectionPosition records the source line/column of a table (or, for an
+// array of tables, its most recently appended element) after it has been
+// assigned into the tree. DeeplyAssign/arrayAppend deep-merge the parsed
+// table's key/values into a freshly auto-created node rather than reusing the
+// parsed node itself, so any Line/Column set on the node being merged in does
+// not survive - it must be set on the resulting tree node afterwards instead.
+// This matters most when a table header re-opens an existing path (e.g.
+// [a.c] after [a] and [b] have already been declared): the sub-table must be
+// tagged with its own header's line, not the line of the parent table.
+func (dec *tomlDecoder) setSectionPosition(c Context, fullPath []interface{}, isArray bool, line, column int) {
+	readOp := createTraversalTree(fullPath, traversePreferences{DontAutoCreate: true}, false)
+	result, err := dec.d.GetMatchingNodes(c, readOp)
+	if err != nil || result.MatchingNodes.Len() == 0 {
+		return
+	}
+	node := result.MatchingNodes.Front().Value.(*CandidateNode)
+	if isArray {
+		if len(node.Content) == 0 {
+			return
+		}
+		node = node.Content[len(node.Content)-1]
+	}
+	node.Line = line
+	node.Column = column
+	if node.Key != nil {
+		node.Key.Line = line
+		node.Key.Column = column
+	}
 }
 
 // if fullPath points to an array of maps rather than a map

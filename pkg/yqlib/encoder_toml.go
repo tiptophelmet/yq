@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/fatih/color"
@@ -135,20 +136,127 @@ func (te *tomlEncoder) encodeRootMapping(w io.Writer, node *CandidateNode) error
 	for i := 0; i < len(node.Content); i += 2 {
 		keyNode := node.Content[i]
 		valNode := node.Content[i+1]
-		if isTomlAttribute(valNode) {
+		isInlineMapping := valNode.Kind == MappingNode && valNode.EncodeHint == EncodeHintInline
+		if isTomlAttribute(valNode) || isInlineMapping {
 			if err := te.encodeTopLevelEntry(w, []string{keyNode.Value}, valNode); err != nil {
 				return err
 			}
 		}
 	}
 
-	for i := 0; i < len(node.Content); i += 2 {
-		keyNode := node.Content[i]
-		valNode := node.Content[i+1]
-		if !isTomlAttribute(valNode) {
-			if err := te.encodeTopLevelEntry(w, []string{keyNode.Value}, valNode); err != nil {
+	sections := te.collectSections(nil, node)
+	sort.SliceStable(sections, func(i, j int) bool { return sections[i].line < sections[j].line })
+	for _, s := range sections {
+		if s.isArray {
+			if err := te.writeArrayOfTables(w, s.path, s.node); err != nil {
 				return err
 			}
+			continue
+		}
+		if err := te.writeTableHeader(w, s.path, s.node); err != nil {
+			return err
+		}
+		if err := te.writeSectionAttrs(w, s.node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tomlSection is a table or array-of-tables that needs its own [header],
+// tagged with the source line of the node that produced it so sections can be
+// emitted in declaration order rather than tree-walk order. Nodes without
+// position information (e.g. data converted from YAML/JSON) have line 0 and
+// keep their tree-walk order, since sorting is stable.
+type tomlSection struct {
+	path    []string
+	node    *CandidateNode
+	line    int
+	isArray bool
+}
+
+// collectSections walks m looking for nested tables and arrays of tables that
+// need their own header, recursing through mappings that don't get a header
+// of their own (dotted-path "pass-through" tables) so every section anywhere
+// in the document ends up in one flat, globally sortable list.
+func (te *tomlEncoder) collectSections(path []string, m *CandidateNode) []tomlSection {
+	var sections []tomlSection
+
+	for i := 0; i < len(m.Content); i += 2 {
+		k := m.Content[i].Value
+		v := m.Content[i+1]
+		if v.Kind == SequenceNode && isTomlArrayOfTables(v) {
+			line := 0
+			if len(v.Content) > 0 {
+				line = v.Content[0].Line
+			}
+			sections = append(sections, tomlSection{path: append(append([]string{}, path...), k), node: v, line: line, isArray: true})
+		}
+	}
+
+	for i := 0; i < len(m.Content); i += 2 {
+		k := m.Content[i].Value
+		v := m.Content[i+1]
+		if v.Kind != MappingNode || v.EncodeHint == EncodeHintInline {
+			continue
+		}
+		childPath := append(append([]string{}, path...), k)
+		if tomlMappingHasAttrs(v) || len(v.Content) == 0 {
+			sections = append(sections, tomlSection{path: childPath, node: v, line: v.Line})
+		}
+		sections = append(sections, te.collectSections(childPath, v)...)
+	}
+
+	return sections
+}
+
+// writeSectionAttrs writes the scalar, inline-table, and non-array-of-tables
+// attributes that belong directly under m. Its nested sub-tables are not
+// written here - they are separate entries in the sorted section list.
+func (te *tomlEncoder) writeSectionAttrs(w io.Writer, m *CandidateNode) error {
+	for i := 0; i < len(m.Content); i += 2 {
+		k := m.Content[i].Value
+		v := m.Content[i+1]
+		switch v.Kind {
+		case ScalarNode:
+			if err := te.writeAttribute(w, k, v); err != nil {
+				return err
+			}
+		case MappingNode:
+			if v.EncodeHint == EncodeHintInline {
+				if err := te.writeInlineTableAttribute(w, k, v); err != nil {
+					return err
+				}
+			}
+		case SequenceNode:
+			if !isTomlArrayOfTables(v) {
+				if err := te.writeArrayAttribute(w, k, v); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// writeArrayOfTables writes each element of an array of tables as its own
+// [[path]] section, reusing the pre-existing recursive body encoder so that
+// structure nested inside array-of-tables elements keeps its established,
+// tree-walk ordering.
+func (te *tomlEncoder) writeArrayOfTables(w io.Writer, path []string, seq *CandidateNode) error {
+	dotted := tomlDottedKey(path)
+	if te.wroteRootAttr {
+		if _, err := w.Write([]byte("\n")); err != nil {
+			return err
+		}
+		te.wroteRootAttr = false
+	}
+	for _, it := range seq.Content {
+		if _, err := w.Write([]byte("[[" + dotted + "]]\n")); err != nil {
+			return err
+		}
+		if err := te.encodeMappingBodyWithPath(w, path, it); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -490,32 +598,30 @@ func (te *tomlEncoder) writeTableHeader(w io.Writer, path []string, m *Candidate
 	return err
 }
 
-// encodeSeparateMapping handles a mapping that should be encoded as table sections.
-// It emits the table header for this mapping if it has any content, then processes children.
-func (te *tomlEncoder) encodeSeparateMapping(w io.Writer, path []string, m *CandidateNode) error {
-	// Check if this mapping has any non-mapping, non-array-of-tables children (i.e., attributes).
-	// Inline mapping children also count as attributes since they render as key = { ... }.
-	hasAttrs := false
+// tomlMappingHasAttrs reports whether m has any non-mapping, non-array-of-tables
+// child (i.e. something that renders as an inline key = value). Inline mapping
+// children also count as attributes since they render as key = { ... }.
+func tomlMappingHasAttrs(m *CandidateNode) bool {
 	for i := 0; i < len(m.Content); i += 2 {
 		v := m.Content[i+1]
 		if v.Kind == ScalarNode && v.Tag != "!!null" {
-			hasAttrs = true
-			break
+			return true
 		}
 		if v.Kind == MappingNode && v.EncodeHint == EncodeHintInline {
-			hasAttrs = true
-			break
+			return true
 		}
-		if v.Kind == SequenceNode {
-			if !isTomlArrayOfTables(v) {
-				hasAttrs = true
-				break
-			}
+		if v.Kind == SequenceNode && !isTomlArrayOfTables(v) {
+			return true
 		}
 	}
+	return false
+}
 
+// encodeSeparateMapping handles a mapping that should be encoded as table sections.
+// It emits the table header for this mapping if it has any content, then processes children.
+func (te *tomlEncoder) encodeSeparateMapping(w io.Writer, path []string, m *CandidateNode) error {
 	// If there are attributes or if the mapping is empty, emit the table header
-	if hasAttrs || len(m.Content) == 0 {
+	if tomlMappingHasAttrs(m) || len(m.Content) == 0 {
 		if err := te.writeTableHeader(w, path, m); err != nil {
 			return err
 		}
