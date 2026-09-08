@@ -101,6 +101,51 @@ var uniqueOperatorScenarios = []expressionScenario{
 		},
 		skipForGoccy: true, // https://github.com/goccy/go-yaml/issues/757
 	},
+	{
+		description:    "Unique ignores comments between duplicate objects",
+		subdescription: "A comment sitting between two otherwise identical entries does not stop them being deduplicated.",
+		document:       "- id: 1001\n# Comment\n- id: 1001\n",
+		expression:     `unique`,
+		expected: []string{
+			"D0, P[], (!!seq)::- id: 1001\n",
+		},
+	},
+	{
+		description: "Unique ignores comments on the first of two duplicate objects",
+		skipDoc:     true,
+		document:    "# Comment\n- id: 1001\n- id: 1001\n",
+		expression:  `unique`,
+		expected: []string{
+			"D0, P[], (!!seq)::# Comment\n- id: 1001\n",
+		},
+	},
+	{
+		description: "Unique keeps a comment between two distinct objects, then still removes a later duplicate",
+		skipDoc:     true,
+		document:    "- id: 1001\n# Comment\n- id: 1002\n- id: 1001\n",
+		expression:  `unique`,
+		expected: []string{
+			"D0, P[], (!!seq)::- id: 1001\n# Comment\n- id: 1002\n",
+		},
+	},
+	{
+		description: "Unique ignores comments on nested mappings and sequences",
+		skipDoc:     true,
+		document:    "- name: harry\n  pets:\n    - cat\n    - dog\n# a comment\n- name: harry\n  pets:\n    - cat\n    - dog\n",
+		expression:  `unique`,
+		expected: []string{
+			"D0, P[], (!!seq)::- name: harry\n  pets:\n    - cat\n    - dog\n",
+		},
+	},
+	{
+		description: "Unique by ignores comments on the matched field",
+		skipDoc:     true,
+		document:    "- name: harry\n  pet: cat\n# comment on entry\n- name: harry\n  pet: dog\n",
+		expression:  `unique_by(.name)`,
+		expected: []string{
+			"D0, P[], (!!seq)::- name: harry\n  pet: cat\n",
+		},
+	},
 }
 
 func TestUniqueOperatorScenarios(t *testing.T) {
