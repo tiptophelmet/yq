@@ -218,6 +218,30 @@ my-other-feature = []
 my-feature = ["my-other-feature"]
 `
 
+var rtDottedTableDeclaredOutOfOrder = `[a]
+x = 1
+
+[b]
+y = 1
+
+[a.c]
+z = 1
+`
+
+var rtCargoDependenciesDeclaredOutOfOrder = `[dependencies]
+crossterm = "0.29.0"
+dirs = "6"
+
+[target."cfg(unix)".dependencies]
+users = "0.12"
+
+[target."cfg(windows)".dependencies]
+windows = "0.61.3"
+
+[dependencies.clap]
+version = "4.5.*"
+`
+
 var yamlEmptyArrayInTable = `features:
   my-feature: []
 `
@@ -773,6 +797,28 @@ var tomlScenarios = []formatScenario{
 		expression:   ".",
 		expected:     rtSpecialKeyDottedTableSection,
 		scenarioType: "roundtrip",
+	},
+	{
+		description:  "Roundtrip: dotted sub-table declared after a sibling table keeps its declared position",
+		input:        rtDottedTableDeclaredOutOfOrder,
+		expression:   ".",
+		expected:     rtDottedTableDeclaredOutOfOrder,
+		scenarioType: "roundtrip",
+	},
+	{
+		skipDoc:      true,
+		description:  "Issue: Cargo.toml [dependencies.clap] declared after [target...] tables stays after them",
+		input:        rtCargoDependenciesDeclaredOutOfOrder,
+		expression:   ".",
+		expected:     rtCargoDependenciesDeclaredOutOfOrder,
+		scenarioType: "roundtrip",
+	},
+	{
+		skipDoc:      true,
+		description:  "Encode: YAML with no source position keeps tree order for nested tables",
+		input:        "b:\n  n: 1\na:\n  m: 2\n",
+		expected:     "[b]\nn = 1\n\n[a]\nm = 2\n",
+		scenarioType: "encode",
 	},
 }
 
