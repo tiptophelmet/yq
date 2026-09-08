@@ -209,6 +209,44 @@ a:
   b: cat
 ```
 
+## Set head comment, preserving the document start marker
+If the document already starts with a `---`, it's kept, and the new head comment goes underneath it.
+
+Given a sample.yml file of:
+```yaml
+---
+this: should really work
+```
+then
+```bash
+yq '. head_comment="Example"' sample.yml
+```
+will output
+```yaml
+---
+# Example
+this: should really work
+```
+
+## Clear head comment, preserving the document start marker
+Setting an empty head comment still clears it, but leaves a pre-existing `---` in place.
+
+Given a sample.yml file of:
+```yaml
+---
+# old
+this: x
+```
+then
+```bash
+yq '. head_comment=""' sample.yml
+```
+will output
+```yaml
+---
+this: x
+```
+
 ## Set foot comment, using an expression
 Given a sample.yml file of:
 ```yaml
