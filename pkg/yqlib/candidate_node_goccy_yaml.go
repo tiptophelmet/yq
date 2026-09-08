@@ -206,5 +206,7 @@ func (o *CandidateNode) goccyProcessMappingValueNode(mappingEntry *ast.MappingVa
 		valueNode.FootComment = mappingEntry.FootComment.String()
 	}
 
+	o.MergeTrailingKeyValueChild()
+
 	return nil
 }

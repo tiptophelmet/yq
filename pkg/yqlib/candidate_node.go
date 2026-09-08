@@ -290,6 +290,66 @@ func (n *CandidateNode) AddKeyValueChild(rawKey *CandidateNode, rawValue *Candid
 	return key, value
 }
 
+func isMergeMapKey(key *CandidateNode) bool {
+	return key.Tag == "!!merge" || key.Value == "<<"
+}
+
+func isDedupableMapKey(key *CandidateNode) bool {
+	return key.Kind == ScalarNode && !isMergeMapKey(key)
+}
+
+func findDuplicateMapKeyIndex(content []*CandidateNode, key *CandidateNode, limit int) int {
+	if !isDedupableMapKey(key) {
+		return -1
+	}
+	for i := 0; i+1 < limit; i += 2 {
+		existing := content[i]
+		if isDedupableMapKey(existing) && existing.Value == key.Value && existing.Tag == key.Tag {
+			return i
+		}
+	}
+	return -1
+}
+
+// MergeKeyValueChild appends key/value as a new entry to a MappingNode's
+// Content, unless an equivalent scalar key (matching resolved Value and Tag,
+// excluding YAML merge keys) is already present. In that case the existing
+// entry's value is replaced in place - keeping the original key node and its
+// position - so the last value for a duplicate key wins.
+func (n *CandidateNode) MergeKeyValueChild(key *CandidateNode, value *CandidateNode) {
+	if n.Kind == MappingNode {
+		if i := findDuplicateMapKeyIndex(n.Content, key, len(n.Content)); i >= 0 {
+			value.Parent = n
+			value.Key = n.Content[i]
+			n.Content[i+1] = value
+			return
+		}
+	}
+	key.Parent = n
+	value.Parent = n
+	value.Key = key
+	n.Content = append(n.Content, key, value)
+}
+
+// MergeTrailingKeyValueChild folds the most recently appended key/value pair
+// of a MappingNode into an earlier pair with an equivalent key (last-wins),
+// removing the now-redundant trailing pair. It is used where a pair must be
+// appended to Content before its key/value are known (e.g. so anchors
+// encountered while decoding resolve to nodes that are actually in the tree).
+func (n *CandidateNode) MergeTrailingKeyValueChild() {
+	last := len(n.Content)
+	if n.Kind != MappingNode || last < 4 {
+		return
+	}
+	key, value := n.Content[last-2], n.Content[last-1]
+	if i := findDuplicateMapKeyIndex(n.Content, key, last-2); i >= 0 {
+		value.Parent = n
+		value.Key = n.Content[i]
+		n.Content[i+1] = value
+		n.Content = n.Content[:last-2]
+	}
+}
+
 func (n *CandidateNode) AddChild(rawChild *CandidateNode) {
 	value := rawChild.Copy()
 	value.SetParent(n)

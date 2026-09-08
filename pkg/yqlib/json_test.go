@@ -113,6 +113,14 @@ var jsonScenarios = []formatScenario{
 		expected:     "[null]\n",
 	},
 	{
+		description:  "duplicate keys, last value wins",
+		skipDoc:      true,
+		input:        `{"foo":1,"foo":2}`,
+		scenarioType: "roundtrip-ndjson",
+		indent:       0,
+		expected:     "{\"foo\":2}\n",
+	},
+	{
 		description:  "set tags",
 		skipDoc:      true,
 		input:        "[{}]",

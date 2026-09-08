@@ -184,6 +184,54 @@ func TestCandidateNodeAddKeyValueChild(t *testing.T) {
 
 }
 
+func TestCandidateNodeMergeKeyValueChildAppendsNewKey(t *testing.T) {
+	node := &CandidateNode{Kind: MappingNode}
+
+	node.MergeKeyValueChild(createStringScalarNode("foo"), createScalarNode(1, "1"))
+
+	test.AssertResult(t, 2, len(node.Content))
+	test.AssertResult(t, "foo", node.Content[0].Value)
+	test.AssertResult(t, "1", node.Content[1].Value)
+	test.AssertResult(t, true, node.Content[1].Key == node.Content[0])
+	test.AssertResult(t, true, node.Content[0].Parent == node)
+	test.AssertResult(t, true, node.Content[1].Parent == node)
+}
+
+func TestCandidateNodeMergeKeyValueChildReplacesDuplicateKey(t *testing.T) {
+	node := &CandidateNode{Kind: MappingNode}
+
+	firstKey := createStringScalarNode("foo")
+	node.MergeKeyValueChild(firstKey, createScalarNode(1, "1"))
+	node.MergeKeyValueChild(createStringScalarNode("foo"), createScalarNode(2, "2"))
+
+	test.AssertResult(t, 2, len(node.Content))
+	test.AssertResult(t, true, node.Content[0] == firstKey)
+	test.AssertResult(t, "2", node.Content[1].Value)
+	test.AssertResult(t, true, node.Content[1].Key == firstKey)
+}
+
+func TestCandidateNodeMergeKeyValueChildKeepsDifferingTagsSeparate(t *testing.T) {
+	node := &CandidateNode{Kind: MappingNode}
+
+	node.MergeKeyValueChild(createScalarNode(1, "1"), createStringScalarNode("intValue"))
+	node.MergeKeyValueChild(createStringScalarNode("1"), createStringScalarNode("stringValue"))
+
+	test.AssertResult(t, 4, len(node.Content))
+	test.AssertResult(t, "intValue", node.Content[1].Value)
+	test.AssertResult(t, "stringValue", node.Content[3].Value)
+}
+
+func TestCandidateNodeMergeKeyValueChildSkipsMergeKeys(t *testing.T) {
+	node := &CandidateNode{Kind: MappingNode}
+
+	node.MergeKeyValueChild(createStringScalarNode("<<"), createStringScalarNode("first"))
+	node.MergeKeyValueChild(createStringScalarNode("<<"), createStringScalarNode("second"))
+
+	test.AssertResult(t, 4, len(node.Content))
+	test.AssertResult(t, "first", node.Content[1].Value)
+	test.AssertResult(t, "second", node.Content[3].Value)
+}
+
 func TestConvertToNodeInfo(t *testing.T) {
 	child := &CandidateNode{
 		Kind:   ScalarNode,
