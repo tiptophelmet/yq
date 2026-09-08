@@ -606,6 +606,168 @@ func TestInitCommand(t *testing.T) {
 	}
 }
 
+func TestLooksLikeExpression(t *testing.T) {
+	tests := []struct {
+		name     string
+		arg      string
+		expected bool
+	}{
+		{"dot alone", ".", true},
+		{"dot dot", "..", true},
+		{"simple field", ".version", true},
+		{"nested field", ".foo.bar", true},
+		{"index expression", ".[0]", true},
+		{"quoted key", `."a b"`, true},
+		{"variable", "$x", true},
+		{"grouping", "(.a,.b)", true},
+		{"pipe expression", ". | select(.a == 1)", true},
+		{"plain filename", "data.yml", false},
+		{"relative dot path", "./something", false},
+		{"relative parent path", "../something", false},
+		{"hidden path with dir", ".hidden/file", false},
+		{"dash", "-", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := looksLikeExpression(tt.arg)
+			if result != tt.expected {
+				t.Errorf("looksLikeExpression(%q) = %v, want %v", tt.arg, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestProcessArgsExpressionVsFileDisambiguation(t *testing.T) {
+	rootDir := t.TempDir()
+	cwd := rootDir + "/sub"
+
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalWd); err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	}()
+
+	// a file one directory up, so "../something/file.yml" resolves to a real file
+	if err := os.Mkdir(rootDir+"/something", 0o755); err != nil { //nolint:gosec
+		t.Fatalf("Failed to create parent 'something' dir: %v", err)
+	}
+	if err := os.WriteFile(rootDir+"/something/file.yml", []byte("a: 1"), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("Failed to write parent something/file.yml: %v", err)
+	}
+
+	if err := os.Mkdir(cwd, 0o755); err != nil {
+		t.Fatalf("Failed to create cwd dir: %v", err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("Failed to chdir to cwd: %v", err)
+	}
+
+	// a file whose name collides with the expression we want to run
+	if err := os.WriteFile(".version", []byte("boooom"), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("Failed to write .version file: %v", err)
+	}
+	if err := os.WriteFile("data.yml", []byte("version: 1.1.1"), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("Failed to write data.yml file: %v", err)
+	}
+	if err := os.Mkdir("something", 0o755); err != nil { //nolint:gosec
+		t.Fatalf("Failed to create 'something' dir: %v", err)
+	}
+	if err := os.WriteFile("something/file.yml", []byte("a: 1"), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("Failed to write something/file.yml: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		args            []string
+		forceExpression string
+		expectedExpr    string
+		expectedArgs    []string
+	}{
+		{
+			name:         "expression wins over same-named file",
+			args:         []string{".version", "data.yml"},
+			expectedExpr: ".version",
+			expectedArgs: []string{"data.yml"},
+		},
+		{
+			name:         "plain file arg stays a file",
+			args:         []string{"data.yml"},
+			expectedExpr: "",
+			expectedArgs: []string{"data.yml"},
+		},
+		{
+			name:         "relative dot path stays a file",
+			args:         []string{"./something/file.yml"},
+			expectedExpr: "",
+			expectedArgs: []string{"./something/file.yml"},
+		},
+		{
+			name:         "relative parent path stays a file",
+			args:         []string{"../something/file.yml"},
+			expectedExpr: "",
+			expectedArgs: []string{"../something/file.yml"},
+		},
+		{
+			name:         "dot is an expression",
+			args:         []string{"."},
+			expectedExpr: ".",
+			expectedArgs: []string{},
+		},
+		{
+			name:         "dotted field is an expression",
+			args:         []string{".foo.bar"},
+			expectedExpr: ".foo.bar",
+			expectedArgs: []string{},
+		},
+		{
+			name:         "dash stays stdin marker",
+			args:         []string{"-"},
+			expectedExpr: "",
+			expectedArgs: []string{"-"},
+		},
+		{
+			name:            "force expression flag overrides positional parsing",
+			args:            []string{".version", "data.yml"},
+			forceExpression: ".other",
+			expectedExpr:    ".other",
+			expectedArgs:    []string{".version", "data.yml"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalForceExpression := forceExpression
+			originalExpressionFile := expressionFile
+			defer func() {
+				forceExpression = originalForceExpression
+				expressionFile = originalExpressionFile
+			}()
+
+			forceExpression = tt.forceExpression
+			expressionFile = ""
+
+			expr, args, err := processArgs(tt.args)
+			if err != nil {
+				t.Fatalf("processArgs() unexpected error: %v", err)
+			}
+
+			if expr != tt.expectedExpr {
+				t.Errorf("processArgs() expression = %v, want %v", expr, tt.expectedExpr)
+			}
+
+			if !stringsEqual(args, tt.expectedArgs) {
+				t.Errorf("processArgs() args = %v, want %v", args, tt.expectedArgs)
+			}
+		})
+	}
+}
+
 func TestProcessArgsWithExpressionFile(t *testing.T) {
 	// Create a temporary .yq file with Windows line endings
 	tempYqFile, err := os.CreateTemp("", "test.yq")
