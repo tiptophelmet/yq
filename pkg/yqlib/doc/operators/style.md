@@ -209,6 +209,22 @@ g:
     cool
 ```
 
+## Set literal quote style, preserving trailing whitespace before a newline
+Given a sample.yml file of:
+```yaml
+a: "good \"bye \n    cruel\" world!"
+```
+then
+```bash
+yq '.a style="literal"' sample.yml
+```
+will output
+```yaml
+a: |-
+  good "bye 
+      cruel" world!
+```
+
 ## Set folded quote style
 Given a sample.yml file of:
 ```yaml

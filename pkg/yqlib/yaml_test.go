@@ -1,6 +1,8 @@
 package yqlib
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/mikefarah/yq/v4/test"
@@ -142,6 +144,12 @@ var yamlFormatScenarios = []formatScenario{
 		input:       "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
 		expected:    "longDescription: |\n  Multiline file containing\n\n  ✅\n\n  A \"less weird\" utf8 char?\n",
 	},
+	{
+		description: "multiline string with a trailing space before a newline stays a literal block",
+		skipDoc:     true,
+		input:       "baz: |-\n  good \"bye \n      cruel\" world!\n",
+		expected:    "baz: |-\n  good \"bye \n      cruel\" world!\n",
+	},
 }
 
 var yamlParseScenarios = []expressionScenario{
@@ -193,4 +201,45 @@ func TestYamlFormatScenarios(t *testing.T) {
 	for _, tt := range yamlFormatScenarios {
 		testYamlScenario(t, tt)
 	}
+}
+
+// encodeThenDecodeMapValue wraps value in a single-entry mapping (`a: <value>`)
+// before encoding so the literal-style path in the YAML dumper actually runs;
+// a bare top-level scalar takes the UnwrapScalar shortcut in yamlEncoder.Encode
+// and never reaches the style-aware encoder at all.
+func encodeThenDecodeMapValue(t *testing.T, value *CandidateNode) string {
+	t.Helper()
+	root := &CandidateNode{Kind: MappingNode, Tag: "!!map"}
+	root.AddKeyValueChild(createStringScalarNode("a"), value)
+
+	var output bytes.Buffer
+	if err := NewYamlEncoder(ConfiguredYamlPreferences).Encode(&output, root); err != nil {
+		t.Fatal(err)
+	}
+
+	inputs, err := readDocuments(strings.NewReader(output.String()), "sample.yml", 0, NewYamlDecoder(ConfiguredYamlPreferences))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedRoot := inputs.Front().Value.(*CandidateNode)
+	return decodedRoot.Content[1].Value
+}
+
+func TestYamlEncoderLiteralStyleTrailingWhitespaceRoundTrips(t *testing.T) {
+	original := "good \"bye \n    cruel\" world!"
+	node := createStringScalarNode(original)
+	node.Style = LiteralStyle
+
+	test.AssertResult(t, original, encodeThenDecodeMapValue(t, node))
+}
+
+// A value that already contains the sentinel rune the workaround uses
+// internally must not be corrupted: the workaround must detect the
+// collision and back off, rather than restoring the wrong bytes.
+func TestYamlEncoderLiteralStyleTrailingWhitespaceSentinelCollision(t *testing.T) {
+	original := "good \"bye " + string(literalWhitespacePlaceholderSpace) + "\n    cruel\" world!"
+	node := createStringScalarNode(original)
+	node.Style = LiteralStyle
+
+	test.AssertResult(t, original, encodeThenDecodeMapValue(t, node))
 }

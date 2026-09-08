@@ -64,6 +64,16 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 	unicodeWorkaround := newSupplementaryRuneWorkaround()
 	unicodeWorkaround.remapNode(target)
 
+	// go.yaml.in/yaml/v4's emitter also refuses block style for any scalar
+	// containing a space directly followed by a line break, wherever it
+	// occurs in the string - not just a genuinely unsafe trailing blank line.
+	// That silently downgrades an explicit style="literal" request to a
+	// double-quoted rendering. Work around it the same way: swap the
+	// offending whitespace out for placeholder runes before dumping, then
+	// swap the originals back into the encoded bytes afterwards.
+	literalWhitespaceWorkaround := newLiteralTrailingWhitespaceWorkaround()
+	literalWhitespaceWorkaround.remapNode(target)
+
 	// Always buffered. Both post-encoding passes below — restoring the
 	// remapped runes, and re-indenting a single-quoted scalar's closing
 	// quote — work on the finished bytes, so the document cannot stream
@@ -103,7 +113,8 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 	// leading spaces on the bytes it is handed, and restoring the original
 	// runes is what makes those bytes final. Reversing the order would
 	// re-indent a document that still contained placeholders.
-	encoded := fixSingleQuotedClosingIndent(unicodeWorkaround.restore(destination.Bytes()))
+	restored := literalWhitespaceWorkaround.restore(unicodeWorkaround.restore(destination.Bytes()))
+	encoded := fixSingleQuotedClosingIndent(restored)
 
 	if ye.prefs.ColorsEnabled {
 		return colorizeAndPrint(encoded, writer)
