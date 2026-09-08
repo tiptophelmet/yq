@@ -136,6 +136,19 @@ func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*Can
 
 			valueNode.Key = keyNode
 
+			// The underlying yaml parser attaches the foot comment that
+			// trails a mapping entry to the entry's key node rather than
+			// its value node. Move it across so the entry's own node (the
+			// one path expressions like '.a.b' actually resolve to) is the
+			// single canonical place the comment lives. This is restricted to
+			// scalar/alias values as moving it onto a map/sequence node
+			// triggers a stray trailing comma from the underlying encoder
+			// when that container renders in flow style.
+			if keyNode.FootComment != "" && (valueNode.Kind == ScalarNode || valueNode.Kind == AliasNode) {
+				valueNode.FootComment = keyNode.FootComment + valueNode.FootComment
+				keyNode.FootComment = ""
+			}
+
 			o.Content[i] = keyNode
 			o.Content[i+1] = valueNode
 		}
