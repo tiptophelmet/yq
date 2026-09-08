@@ -58,6 +58,25 @@ will output
 }
 ```
 
+## Encode json: complex map keys
+YAML allows maps and sequences to be used as keys; these are rendered as a compact flow-style string so each key stays distinct and non-empty.
+
+Given a sample.yml file of:
+```yaml
+{}:
+{x}:
+[x]:
+
+```
+then
+```bash
+yq -o=json -I=0 '.' sample.yml
+```
+will output
+```json
+{"{}":null,"{x: ''}":null,"[x]":null}
+```
+
 ## Encode json: simple - in one line
 Given a sample.yml file of:
 ```yaml

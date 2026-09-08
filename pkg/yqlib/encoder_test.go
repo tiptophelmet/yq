@@ -75,6 +75,31 @@ func TestJsonNullInObject(t *testing.T) {
 	test.AssertResult(t, `{"x":null}`, actualJSON)
 }
 
+func TestJsonComplexMapKeys(t *testing.T) {
+	var sampleYaml = "{}:\n{x}:\n[x]:\n"
+	var expectedJSON = `{"{}":null,"{x: ''}":null,"[x]":null}`
+	var actualJSON = yamlToJSON(t, sampleYaml, 0)
+	test.AssertResult(t, expectedJSON, actualJSON)
+}
+
+func TestJsonComplexMapKeysPretty(t *testing.T) {
+	var sampleYaml = "{}:\n{x}:\n[x]:\n"
+	var expectedJSON = `{
+  "{}": null,
+  "{x: ''}": null,
+  "[x]": null
+}`
+	var actualJSON = yamlToJSON(t, sampleYaml, 2)
+	test.AssertResult(t, expectedJSON, actualJSON)
+}
+
+func TestJsonSequenceMapKey(t *testing.T) {
+	var sampleYaml = `{"outer": {[1, 2]: "value"}}`
+	var expectedJSON = `{"outer":{"[1, 2]":"value"}}`
+	var actualJSON = yamlToJSON(t, sampleYaml, 0)
+	test.AssertResult(t, expectedJSON, actualJSON)
+}
+
 func TestJsonEncoderDoesNotEscapeHTMLChars(t *testing.T) {
 	var sampleYaml = `build: "( ./lint && ./format && ./compile ) < src.code"`
 	var expectedJSON = `{"build":"( ./lint && ./format && ./compile ) < src.code"}`
