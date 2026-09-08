@@ -103,7 +103,7 @@ func (ye *yamlEncoder) Encode(writer io.Writer, node *CandidateNode) error {
 	// leading spaces on the bytes it is handed, and restoring the original
 	// runes is what makes those bytes final. Reversing the order would
 	// re-indent a document that still contained placeholders.
-	encoded := fixSingleQuotedClosingIndent(unicodeWorkaround.restore(destination.Bytes()))
+	encoded := fixFoldedBlockBlankLines(fixSingleQuotedClosingIndent(unicodeWorkaround.restore(destination.Bytes())))
 
 	if ye.prefs.ColorsEnabled {
 		return colorizeAndPrint(encoded, writer)

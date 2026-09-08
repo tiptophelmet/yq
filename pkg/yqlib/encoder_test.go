@@ -111,3 +111,41 @@ func TestYamlEncoderTopLevelSingleQuotedClosingIndent(t *testing.T) {
 	var actual = yamlToYaml(t, sampleYaml)
 	test.AssertResult(t, expected, actual)
 }
+
+func TestYamlEncoderFoldedBlockNoPhantomBlankLines(t *testing.T) {
+	var sampleYaml = `env:
+  YQ_QUERY: >-
+    (.runs.steps // .jobs.*.steps) | map(
+      select(.uses | test("@(v\d+(\.\d+)*|\d+(\.\d+)+|[a-f0-9]{40})$") | not)
+      | .uses
+      | "\(key | line) \(split(\"@\")[1])"
+    )[]
+`
+	var actual = yamlToYaml(t, sampleYaml)
+	test.AssertResult(t, sampleYaml, actual)
+}
+
+func TestYamlEncoderFoldedBlockPreservesGenuineBlankLine(t *testing.T) {
+	var sampleYaml = "key: >-\n  line1\n\n  line2\n"
+	var actual = yamlToYaml(t, sampleYaml)
+	test.AssertResult(t, sampleYaml, actual)
+}
+
+func TestYamlEncoderFoldedBlockSingleLineUnaffected(t *testing.T) {
+	var sampleYaml = "key: >-\n  single line, no newlines here\n"
+	var actual = yamlToYaml(t, sampleYaml)
+	test.AssertResult(t, sampleYaml, actual)
+}
+
+func TestYamlEncoderLiteralBlockUnaffected(t *testing.T) {
+	var sampleYaml = `env:
+  YQ_QUERY: |-
+    (.runs.steps // .jobs.*.steps) | map(
+      select(.uses | test("@(v\d+(\.\d+)*|\d+(\.\d+)+|[a-f0-9]{40})$") | not)
+      | .uses
+      | "\(key | line) \(split(\"@\")[1])"
+    )[]
+`
+	var actual = yamlToYaml(t, sampleYaml)
+	test.AssertResult(t, sampleYaml, actual)
+}
