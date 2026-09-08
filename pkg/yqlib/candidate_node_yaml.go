@@ -102,6 +102,24 @@ func (o *CandidateNode) decodeIntoChild(childNode *yaml.Node, anchorMap map[stri
 	return newChild, err
 }
 
+// checkDuplicateMapKey records keyNode's rendered value in seenKeys and returns
+// an error if it has already been seen. Merge keys ("<<") are legitimately
+// repeated (e.g. `<<: *a` / `<<: *b` in the same map) so they're exempt, and
+// non-scalar (complex) keys are skipped rather than compared.
+func checkDuplicateMapKey(seenKeys map[string]bool, keyNode *CandidateNode) error {
+	if keyNode.Kind != ScalarNode {
+		return nil
+	}
+	if keyNode.Tag == "!!merge" || keyNode.Value == "<<" {
+		return nil
+	}
+	if seenKeys[keyNode.Value] {
+		return fmt.Errorf("map keys must be unique: %q is duplicated at line %v, column %v", keyNode.Value, keyNode.Line, keyNode.Column)
+	}
+	seenKeys[keyNode.Value] = true
+	return nil
+}
+
 func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*CandidateNode) error {
 	log.Debugf("UnmarshalYAML %v", node.Tag)
 	switch node.Kind {
@@ -120,6 +138,7 @@ func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*Can
 		o.Kind = MappingNode
 		o.copyFromYamlNode(node, anchorMap)
 		o.Content = make([]*CandidateNode, len(node.Content))
+		seenKeys := make(map[string]bool)
 		for i := 0; i < len(node.Content); i += 2 {
 
 			keyNode, err := o.decodeIntoChild(node.Content[i], anchorMap)
@@ -128,6 +147,10 @@ func (o *CandidateNode) UnmarshalYAML(node *yaml.Node, anchorMap map[string]*Can
 			}
 
 			keyNode.IsMapKey = true
+
+			if err := checkDuplicateMapKey(seenKeys, keyNode); err != nil {
+				return err
+			}
 
 			valueNode, err := o.decodeIntoChild(node.Content[i+1], anchorMap)
 			if err != nil {

@@ -112,8 +112,9 @@ func (o *CandidateNode) UnmarshalGoccyYAML(node ast.Node, cm yaml.CommentMap, an
 		if mappingNode.IsFlowStyle {
 			o.Style = FlowStyle
 		}
+		seenKeys := make(map[string]bool)
 		for _, mappingValueNode := range mappingNode.Values {
-			err := o.goccyProcessMappingValueNode(mappingValueNode, cm, anchorMap)
+			err := o.goccyProcessMappingValueNode(mappingValueNode, cm, anchorMap, seenKeys)
 			if err != nil {
 				return err
 			}
@@ -127,7 +128,7 @@ func (o *CandidateNode) UnmarshalGoccyYAML(node ast.Node, cm yaml.CommentMap, an
 		o.Kind = MappingNode
 		o.Tag = "!!map"
 		mappingValueNode := node.(*ast.MappingValueNode)
-		err := o.goccyProcessMappingValueNode(mappingValueNode, cm, anchorMap)
+		err := o.goccyProcessMappingValueNode(mappingValueNode, cm, anchorMap, nil)
 		if err != nil {
 			return err
 		}
@@ -186,7 +187,7 @@ func (o *CandidateNode) UnmarshalGoccyYAML(node ast.Node, cm yaml.CommentMap, an
 	return nil
 }
 
-func (o *CandidateNode) goccyProcessMappingValueNode(mappingEntry *ast.MappingValueNode, cm yaml.CommentMap, anchorMap map[string]*CandidateNode) error {
+func (o *CandidateNode) goccyProcessMappingValueNode(mappingEntry *ast.MappingValueNode, cm yaml.CommentMap, anchorMap map[string]*CandidateNode, seenKeys map[string]bool) error {
 	log.Debugf("UnmarshalYAML MAP KEY entry %v", mappingEntry.Key)
 
 	// AddKeyValueFirst because it clones the nodes, and we want to have the real refs when Unmarshalling
@@ -195,6 +196,12 @@ func (o *CandidateNode) goccyProcessMappingValueNode(mappingEntry *ast.MappingVa
 
 	if err := keyNode.UnmarshalGoccyYAML(mappingEntry.Key, cm, anchorMap); err != nil {
 		return err
+	}
+
+	if seenKeys != nil {
+		if err := checkDuplicateMapKey(seenKeys, keyNode); err != nil {
+			return err
+		}
 	}
 
 	log.Debugf("UnmarshalYAML MAP VALUE entry %v", mappingEntry.Value)

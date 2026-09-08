@@ -26,7 +26,9 @@ func NewGoccyYAMLDecoder() Decoder {
 
 func (dec *goccyYamlDecoder) Init(reader io.Reader) error {
 	dec.cm = yaml.CommentMap{}
-	dec.decoder = *yaml.NewDecoder(reader, yaml.CommentToMap(dec.cm), yaml.UseOrderedMap())
+	// duplicate map keys are checked ourselves in UnmarshalGoccyYAML, so that
+	// legitimately repeated merge ("<<") keys aren't rejected by the parser.
+	dec.decoder = *yaml.NewDecoder(reader, yaml.CommentToMap(dec.cm), yaml.UseOrderedMap(), yaml.AllowDuplicateMapKey())
 	dec.anchorMap = make(map[string]*CandidateNode)
 	return nil
 }

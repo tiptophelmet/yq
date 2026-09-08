@@ -268,9 +268,46 @@ var goccyYamlFormatScenarios = []formatScenario{
 		input:       "[1, 2]",
 		expected:    "[1, 2]\n",
 	},
+	{
+		description:   "duplicated top level key",
+		skipDoc:       true,
+		scenarioType:  "decode-error",
+		input:         "duplicateKey: true\nduplicateKey: false\n",
+		expectedError: `bad file 'sample.yml': map keys must be unique: "duplicateKey" is duplicated at line 2, column 1`,
+	},
+	{
+		description:   "duplicated nested key",
+		skipDoc:       true,
+		scenarioType:  "decode-error",
+		input:         "a:\n  b: 1\n  b: 2\n",
+		expectedError: `bad file 'sample.yml': map keys must be unique: "b" is duplicated at line 3, column 3`,
+	},
+	{
+		description: "repeated merge keys in the same map are accepted",
+		skipDoc:     true,
+		input:       "a: &a\n  x: 1\nb: &b\n  y: 2\nc:\n  <<: *a\n  <<: *b\n",
+		expression:  ".c | explode(.)",
+		expected:    "x: 1\ny: 2\n",
+	},
+	{
+		description: "same key in sibling maps is accepted",
+		skipDoc:     true,
+		input:       "a:\n  x: 1\nb:\n  x: 2\n",
+		expression:  ".",
+		expected:    "a:\n  x: 1\nb:\n  x: 2\n",
+	},
 }
 
 func testGoccyYamlScenario(t *testing.T, s formatScenario) {
+	if s.scenarioType == "decode-error" {
+		result, err := processFormatScenario(s, NewGoccyYAMLDecoder(), NewYamlEncoder(ConfiguredYamlPreferences))
+		if err == nil {
+			t.Errorf("Expected error '%v' but it worked: %v", s.expectedError, result)
+		} else {
+			test.AssertResultComplexWithContext(t, s.expectedError, err.Error(), s.description)
+		}
+		return
+	}
 	test.AssertResultWithContext(t, s.expected, mustProcessFormatScenario(s, NewGoccyYAMLDecoder(), NewYamlEncoder(ConfiguredYamlPreferences)), s.description)
 }
 

@@ -566,17 +566,6 @@ var anchorOperatorScenarios = []expressionScenario{
 		expected:       []string{expectedUpdatedArrayRef},
 	},
 	{
-		skipDoc:        true,
-		description:    "Duplicate keys",
-		subdescription: "outside merge anchor",
-		document:       `{a: 1, a: 2}`,
-		expression:     `explode(.)`,
-		expected: []string{
-			// {a: 2} would also be fine
-			"D0, P[], (!!map)::{a: 1, a: 2}\n",
-		},
-	},
-	{
 		skipDoc:     true,
 		description: "!!str << should not be treated as merge anchor",
 		document:    `{!!str <<: {a: 37}}`,

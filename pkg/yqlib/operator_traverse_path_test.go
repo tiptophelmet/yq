@@ -629,16 +629,6 @@ var traversePathOperatorScenarios = []expressionScenario{
 	},
 	{
 		skipDoc:        true,
-		description:    "Duplicate keys",
-		subdescription: "outside merge anchor",
-		document:       `{a: 1, a: 2}`,
-		expression:     `.a`,
-		expected: []string{
-			"D0, P[a], (!!int)::2\n",
-		},
-	},
-	{
-		skipDoc:        true,
 		description:    "Traversing map with invalid merge anchor should not fail",
 		subdescription: "Otherwise code cannot do anything with it",
 		document:       `{a: 42, <<: 37}`,
