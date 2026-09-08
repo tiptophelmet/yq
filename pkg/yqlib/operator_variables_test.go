@@ -115,9 +115,35 @@ var variableOperatorScenarios = []expressionScenario{
 		expression:  `. as $o | keys[] | $o[., 0]`,
 		expected: []string{
 			"D0, P[0], (!!str)::a\n",
-			"D0, P[0], (!!str)::a\n",
 			"D0, P[1], (!!str)::b\n",
-			"D0, P[0], (!!str)::a\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Nested ref bindings ending in an assignment do not multiply the document",
+		document:    `top: [{n: d1, f: f1, h: [{hn: h1a}, {hn: h1b}]}, {n: d2, f: f2, h: [{hn: h2a}, {hn: h2b}]}]`,
+		expression:  `.top[] ref $p | $p.h[] ref $h | $h.hf = $p.f`,
+		expected: []string{
+			"D0, P[], (!!map)::top: [{n: d1, f: f1, h: [{hn: h1a, hf: f1}, {hn: h1b, hf: f1}]}, {n: d2, f: f2, h: [{hn: h2a, hf: f2}, {hn: h2b, hf: f2}]}]\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Nested ref binding with an in-place update still yields a single result",
+		document:    `top: [{n: d1, f: f1, h: [{hn: h1a}, {hn: h1b}]}, {n: d2, f: f2, h: [{hn: h2a}, {hn: h2b}]}]`,
+		expression:  `.top[] ref $t | $t |= .h[] |= (.f = $t.f)`,
+		expected: []string{
+			"D0, P[], (!!map)::top: [{n: d1, f: f1, h: [{hn: h1a, f: f1}, {hn: h1b, f: f1}]}, {n: d2, f: f2, h: [{hn: h2a, f: f2}, {hn: h2b, f: f2}]}]\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Ref bindings for genuinely distinct matches are not de-duplicated",
+		document:    `top: [{n: d1}, {n: d2}]`,
+		expression:  `.top[] ref $p | $p.n`,
+		expected: []string{
+			"D0, P[top 0 n], (!!str)::d1\n",
+			"D0, P[top 1 n], (!!str)::d2\n",
 		},
 	},
 }

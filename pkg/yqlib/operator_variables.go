@@ -64,6 +64,7 @@ func variableLoopSingleChild(d *dataTreeNavigator, context Context, originalExp 
 	prefs := variableExp.Operation.Preferences.(assignVarPreferences)
 
 	results := list.New()
+	seen := make(map[*CandidateNode]struct{})
 
 	// now we loop over lhs, set variable to each result and calculate originalExp.Rhs
 	for el := lhs.MatchingNodes.Front(); el != nil; el = el.Next() {
@@ -84,7 +85,13 @@ func variableLoopSingleChild(d *dataTreeNavigator, context Context, originalExp 
 			return Context{}, err
 		}
 		log.Debugf("PROCESSING VARIABLE DONE, got back: %v", rhs.MatchingNodes.Len())
-		results.PushBackList(rhs.MatchingNodes)
+		for rhsEl := rhs.MatchingNodes.Front(); rhsEl != nil; rhsEl = rhsEl.Next() {
+			candidate := rhsEl.Value.(*CandidateNode)
+			if _, alreadySeen := seen[candidate]; !alreadySeen {
+				seen[candidate] = struct{}{}
+				results.PushBack(candidate)
+			}
+		}
 	}
 
 	// if there is no LHS - then I guess we just calculate originalExp.Rhs
