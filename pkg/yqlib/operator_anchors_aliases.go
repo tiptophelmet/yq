@@ -155,7 +155,13 @@ func fixedReconstructAliasedMap(node *CandidateNode) error {
 			if err := explodeNode(valueNode, Context{}); err != nil {
 				return err
 			}
-			newContent = append(newContent, keyNode, valueNode)
+			if existingIndex := findKeyIndex(newContent, keyNode.Value); existingIndex != -1 {
+				// keep the position an earlier merge anchor contributed this key at,
+				// only overriding its value.
+				newContent[existingIndex+1] = valueNode
+			} else {
+				newContent = append(newContent, keyNode, valueNode)
+			}
 		} else {
 			sequence := valueNode
 			if sequence.Kind == AliasNode {
@@ -178,8 +184,7 @@ func fixedReconstructAliasedMap(node *CandidateNode) error {
 					return fmt.Errorf("can only use merge anchors with maps (!!map) or sequences (!!seq) of maps, but got sequence containing %v", mergeNodeSeq.Tag)
 				}
 				itemsToAdd := mergeNodeSeq.FilterMapContentByKey(func(keyNode *CandidateNode) bool {
-					return getContentValueByKey(node.Content, keyNode.Value) == nil &&
-						getContentValueByKey(newContent, keyNode.Value) == nil
+					return getContentValueByKey(newContent, keyNode.Value) == nil
 				})
 
 				for _, item := range itemsToAdd {
@@ -204,7 +209,7 @@ func reconstructAliasedMap(node *CandidateNode, context Context) error {
 		valueNode := node.Content[index+1]
 		log.Debugf("traversing %v", keyNode.Value)
 		if keyNode.Value != "<<" {
-			err := overrideEntry(node, keyNode, valueNode, index, context.ChildContext(newContent))
+			err := overrideEntry(keyNode, valueNode, context.ChildContext(newContent))
 			if err != nil {
 				return err
 			}
@@ -213,14 +218,14 @@ func reconstructAliasedMap(node *CandidateNode, context Context) error {
 				log.Debugf("an alias merge list!")
 				for index := len(valueNode.Content) - 1; index >= 0; index = index - 1 {
 					aliasNode := valueNode.Content[index]
-					err := applyAlias(node, aliasNode.Alias, index, context.ChildContext(newContent))
+					err := applyAlias(aliasNode.Alias, context.ChildContext(newContent))
 					if err != nil {
 						return err
 					}
 				}
 			} else {
 				log.Debugf("an alias merge!")
-				err := applyAlias(node, valueNode.Alias, index, context.ChildContext(newContent))
+				err := applyAlias(valueNode.Alias, context.ChildContext(newContent))
 				if err != nil {
 					return err
 				}
@@ -304,7 +309,7 @@ func explodeNode(node *CandidateNode, context Context) error {
 	}
 }
 
-func applyAlias(node *CandidateNode, alias *CandidateNode, aliasIndex int, newContent Context) error {
+func applyAlias(alias *CandidateNode, newContent Context) error {
 	log.Debug("alias is nil ?")
 	if alias == nil {
 		return nil
@@ -317,7 +322,7 @@ func applyAlias(node *CandidateNode, alias *CandidateNode, aliasIndex int, newCo
 		keyNode := alias.Content[index]
 		log.Debugf("applying alias key %v", keyNode.Value)
 		valueNode := alias.Content[index+1]
-		err := overrideEntry(node, keyNode, valueNode, aliasIndex, newContent)
+		err := overrideEntry(keyNode, valueNode, newContent)
 		if err != nil {
 			return err
 		}
@@ -325,7 +330,10 @@ func applyAlias(node *CandidateNode, alias *CandidateNode, aliasIndex int, newCo
 	return nil
 }
 
-func overrideEntry(node *CandidateNode, key *CandidateNode, value *CandidateNode, startIndex int, newContent Context) error {
+// overrideEntry adds key/value to newContent, or, if newContent already holds an
+// entry for key (contributed earlier by a merge anchor or a duplicate key), overwrites
+// that entry's value in place so the key keeps the position it already occupies.
+func overrideEntry(key *CandidateNode, value *CandidateNode, newContent Context) error {
 
 	err := explodeNode(value, newContent)
 
@@ -338,20 +346,11 @@ func overrideEntry(node *CandidateNode, key *CandidateNode, value *CandidateNode
 		keyNode := newEl.Value.(*CandidateNode)
 		log.Debugf("checking new content %v:%v", keyNode.Value, valueEl.Value.(*CandidateNode).Value)
 		if keyNode.Value == key.Value && keyNode.Alias == nil && key.Alias == nil {
-			log.Debugf("overridign new content")
+			log.Debugf("overriding new content in place, keeping its existing position")
 			valueEl.Value = value
 			return nil
 		}
 		newEl = valueEl // move forward twice
-	}
-
-	for index := startIndex + 2; index < len(node.Content); index = index + 2 {
-		keyNode := node.Content[index]
-
-		if keyNode.Value == key.Value && keyNode.Alias == nil {
-			log.Debugf("content will be overridden at index %v", index)
-			return nil
-		}
 	}
 
 	err = explodeNode(key, newContent)

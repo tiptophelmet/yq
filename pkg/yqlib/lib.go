@@ -48,6 +48,16 @@ func getContentValueByKey(content []*CandidateNode, key string) *CandidateNode {
 	return nil
 }
 
+// findKeyIndex returns the index of key's key-node within content, or -1 if absent.
+func findKeyIndex(content []*CandidateNode, key string) int {
+	for index := 0; index < len(content)-1; index = index + 2 {
+		if content[index].Value == key {
+			return index
+		}
+	}
+	return -1
+}
+
 func recurseNodeArrayEqual(lhs *CandidateNode, rhs *CandidateNode) bool {
 	if len(lhs.Content) != len(rhs.Content) {
 		return false
