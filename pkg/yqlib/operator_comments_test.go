@@ -252,6 +252,33 @@ var commentOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
+		skipDoc:     true,
+		description: "Get line comment with no space after hash",
+		document:    "a: cat #meow\nb: dog # woof",
+		expression:  `.a | line_comment`,
+		expected: []string{
+			"D0, P[a], (!!str)::meow\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Get line comment with multiple spaces after hash",
+		document:    "a: cat #   meow\nb: dog # woof",
+		expression:  `.a | line_comment`,
+		expected: []string{
+			"D0, P[a], (!!str)::  meow\n",
+		},
+	},
+	{
+		skipDoc:     true,
+		description: "Get line comment with double hash",
+		document:    "a: cat ##meow\nb: dog # woof",
+		expression:  `.a | line_comment`,
+		expected: []string{
+			"D0, P[a], (!!str)::#meow\n",
+		},
+	},
+	{
 		description:           "Get head comment",
 		dontFormatInputForDoc: true,
 		document:              "# welcome!\n\na: cat # meow\n\n# have a great day",
