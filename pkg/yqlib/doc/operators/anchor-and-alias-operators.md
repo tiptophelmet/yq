@@ -234,6 +234,41 @@ thingTwo:
   <<: *item_value
 ```
 
+## Overridden merge keys keep their position
+The overriding key keeps the position of the merged key it overrides, instead of moving to the end. This also works transitively, through nested merges.
+
+Given a sample.yml file of:
+```yaml
+.global-config: &global-config
+  first: foo
+  second: bar
+  third: baz
+.local-config: &local-config
+  <<: *global-config
+  first: FOO
+final-config:
+  <<: *local-config
+```
+then
+```bash
+yq 'explode(.)' sample.yml
+```
+will output
+```yaml
+.global-config:
+  first: foo
+  second: bar
+  third: baz
+.local-config:
+  first: FOO
+  second: bar
+  third: baz
+final-config:
+  first: FOO
+  second: bar
+  third: baz
+```
+
 ## LEGACY: Explode with merge anchors
 Caution: this is for when --yaml-fix-merge-anchor-to-spec=false; it's not to YAML spec because the merge anchors incorrectly override the object values (foobarList.b is set to bar_b when it should still be foobarList_b). Flag will default to true in late 2025
 
@@ -455,8 +490,8 @@ yq '.[4] | explode(.)' sample.yml
 will output
 ```yaml
 r: 10
-y: 2
 x: 1
+y: 2
 ```
 
 ## Exploding inline merge anchor

@@ -87,8 +87,8 @@ var explodeWhenKeysExistLegacy = `D0, P[], (!!map)::objects:
       shape: round
     - name: circle
       shape: round
-    - shape: round
-      name: egg
+    - name: egg
+      shape: round
 `
 
 var explodeWhenKeysExistExpected = `D0, P[], (!!map)::objects:
@@ -96,8 +96,21 @@ var explodeWhenKeysExistExpected = `D0, P[], (!!map)::objects:
       shape: round
     - name: ellipse
       shape: round
-    - shape: round
-      name: egg
+    - name: egg
+      shape: round
+`
+
+var nestedOverrideMergeDocument = `.global-config: &global-config
+  first: foo
+  second: bar
+  third: baz
+
+.local-config: &local-config
+  <<: *global-config
+  first: FOO
+
+final-config:
+  <<: *local-config
 `
 
 var fixedAnchorOperatorScenarios = []expressionScenario{
@@ -148,7 +161,7 @@ var fixedAnchorOperatorScenarios = []expressionScenario{
 		subdescription: "Taken from https://yaml.org/type/merge.html. Same values as legacy, but with the correct key order.",
 		document:       specDocument + "- << : [ *BIG, *LEFT, *SMALL ]\n  x: 1\n",
 		expression:     ".[4] | explode(.)",
-		expected:       []string{"D0, P[4], (!!map)::r: 10\ny: 2\nx: 1\n"},
+		expected:       []string{"D0, P[4], (!!map)::r: 10\nx: 1\ny: 2\n"},
 	},
 	{
 		description: "Exploding inline merge anchor",
@@ -257,6 +270,16 @@ opensearch-client:
 			"D0, P[], (!!map)::opensearch:\n    ip2geo:\n        enabled: true\nopensearch-client:\n    ip2geo:\n        enabled: true\n    nodeGroup: client\n    opensearchJavaOpts: \"-Xmx1536m -Xms1536m\"\n",
 		},
 	},
+	{
+		skipDoc:        true,
+		description:    "FIXED: Merge anchor after own key",
+		subdescription: "The own key `first` is declared before the `<<` merge, and still wins over the merged value.",
+		document:       mergeAfterOwnKeyDocument,
+		expression:     `explode(.)`,
+		expected: []string{
+			"D0, P[], (!!map)::a:\n    first: foo\n    second: bar\nb:\n    first: FOO\n    second: bar\n",
+		},
+	},
 }
 
 var badAnchorOperatorScenarios = []expressionScenario{
@@ -308,6 +331,16 @@ var badAnchorOperatorScenarios = []expressionScenario{
 		document:   specDocument + "- << : [ *BIG, *LEFT, *SMALL ]\n  x: 1\n",
 		expression: ".[4] | explode(.)",
 		expected:   []string{"D0, P[4], (!!map)::r: 10\nx: 1\ny: 2\n"},
+	},
+	{
+		skipDoc:        true, // incorrect overrides
+		description:    "LEGACY: Merge anchor after own key",
+		subdescription: "Caution: this is for when --yaml-fix-merge-anchor-to-spec=false; the merge incorrectly overrides the own key's value.",
+		document:       mergeAfterOwnKeyDocument,
+		expression:     `explode(.)`,
+		expected: []string{
+			"D0, P[], (!!map)::a:\n    first: foo\n    second: bar\nb:\n    first: foo\n    second: bar\n",
+		},
 	},
 }
 
@@ -585,7 +618,18 @@ var anchorOperatorScenarios = []expressionScenario{
 			"D0, P[a], (!!null)::null\n",
 		},
 	},
+	{
+		description:    "Overridden merge keys keep their position",
+		subdescription: "The overriding key keeps the position of the merged key it overrides, instead of moving to the end. This also works transitively, through nested merges.",
+		document:       nestedOverrideMergeDocument,
+		expression:     `explode(.)`,
+		expected: []string{
+			"D0, P[], (!!map)::.global-config:\n    first: foo\n    second: bar\n    third: baz\n.local-config:\n    first: FOO\n    second: bar\n    third: baz\nfinal-config:\n    first: FOO\n    second: bar\n    third: baz\n",
+		},
+	},
 }
+
+var mergeAfterOwnKeyDocument = "a: &a\n  first: foo\n  second: bar\nb:\n  first: FOO\n  <<: *a\n"
 
 func TestAnchorAliasOperatorScenarios(t *testing.T) {
 	for _, tt := range append(anchorOperatorScenarios, badAnchorOperatorScenarios...) {
