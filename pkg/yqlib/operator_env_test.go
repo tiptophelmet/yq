@@ -4,6 +4,79 @@ import (
 	"testing"
 )
 
+func TestEnvOperatorDynamicNameScenarios(t *testing.T) {
+	t.Run("with(...) using key as the dynamic env var name", func(t *testing.T) {
+		t.Setenv("FOO", "bar")
+		t.Setenv("BAR", "baz")
+		testScenario(t, &expressionScenario{
+			description:    "Use each map key to look up its own environment variable",
+			subdescription: "`env(...)` and `strenv(...)` can take any yq expression, not just a literal variable name. Here `key` picks the variable name for each entry.",
+			skipDoc:        true,
+			document:       `configmap: {values: {FOO: "", BAR: ""}}`,
+			expression:     `with(.configmap.values[]; . = env(key))`,
+			expected: []string{
+				"D0, P[], (!!map)::configmap: {values: {FOO: \"bar\", BAR: \"baz\"}}\n",
+			},
+		})
+	})
+
+	t.Run("literal env(FOO) unaffected by dynamic support", func(t *testing.T) {
+		t.Setenv("FOO", "bar")
+		testScenario(t, &expressionScenario{
+			description: "A literal, set variable name is still read exactly as before",
+			skipDoc:     true,
+			document:    `configmap: {values: {FOO: "", BAR: ""}}`,
+			expression:  `with(.configmap.values[]; . = env(FOO))`,
+			expected: []string{
+				"D0, P[], (!!map)::configmap: {values: {FOO: \"bar\", BAR: \"bar\"}}\n",
+			},
+		})
+	})
+
+	t.Run("literal strenv(FOO) unaffected by dynamic support", func(t *testing.T) {
+		t.Setenv("FOO", "true")
+		testScenario(t, &expressionScenario{
+			description: "A literal, set variable name is still read as a plain string",
+			skipDoc:     true,
+			expression:  `strenv(FOO)`,
+			expected: []string{
+				"D0, P[], (!!str)::true\n",
+			},
+		})
+	})
+
+	t.Run("strenv with dynamic name returns empty string when unset", func(t *testing.T) {
+		testScenario(t, &expressionScenario{
+			description: "strenv() with a dynamic name resolves to an empty string when the target variable isn't set",
+			skipDoc:     true,
+			document:    `a: unsetDynamicEnvVar`,
+			expression:  `strenv(.a)`,
+			expected: []string{
+				"D0, P[], (!!str)::\n",
+			},
+		})
+	})
+
+	t.Run("env() dynamic name that cannot be parsed", func(t *testing.T) {
+		testScenario(t, &expressionScenario{
+			description:   "env() with an expression that fails to parse",
+			skipDoc:       true,
+			expression:    `env(&&&)`,
+			expectedError: `could not process substitution '&&&' in env(): 1:1: lexer: invalid input text "&&&"`,
+		})
+	})
+
+	t.Run("env() dynamic name resolving to multiple nodes", func(t *testing.T) {
+		testScenario(t, &expressionScenario{
+			description:   "env() dynamic expression must resolve to a single value",
+			skipDoc:       true,
+			document:      `a: [x, y]`,
+			expression:    `env(.a[])`,
+			expectedError: `substitution '.a[]' in env() must resolve to exactly one value, found 2`,
+		})
+	})
+}
+
 var envOperatorScenarios = []expressionScenario{
 	{
 		description:          "Read string environment variable",
