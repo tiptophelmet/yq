@@ -158,6 +158,42 @@ var commentOperatorScenarios = []expressionScenario{
 		},
 	},
 	{
+		description:           "Set head comment, preserving the document start marker",
+		subdescription:        "If the document already starts with a `---`, it's kept, and the new head comment goes underneath it.",
+		dontFormatInputForDoc: true,
+		document:              "---\nthis: should really work",
+		expression:            `. head_comment="Example"`,
+		expected: []string{
+			"D0, P[], (!!map)::---\n# Example\nthis: should really work\n",
+		},
+	},
+	{
+		skipDoc:    true,
+		document:   "---\n# old\nthis: x",
+		expression: `. head_comment="new"`,
+		expected: []string{
+			"D0, P[], (!!map)::---\n# new\nthis: x\n",
+		},
+	},
+	{
+		description:    "Clear head comment, preserving the document start marker",
+		subdescription: "Setting an empty head comment still clears it, but leaves a pre-existing `---` in place.",
+		document:       "---\n# old\nthis: x",
+		expression:     `. head_comment=""`,
+		expected: []string{
+			"D0, P[], (!!map)::---\nthis: x\n",
+		},
+	},
+	{
+		skipDoc:    true,
+		document:   "---\na: 1\n---\nb: 2",
+		expression: `(select(di==0)) head_comment="Example"`,
+		expected: []string{
+			"D0, P[], (!!map)::---\n# Example\na: 1\n",
+			"D1, P[], (!!map)::b: 2\n",
+		},
+	},
+	{
 		description: "Set foot comment, using an expression",
 		document:    `a: cat`,
 		expression:  `. foot_comment=.a`,

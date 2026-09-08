@@ -5,12 +5,25 @@ import (
 	"bytes"
 	"container/list"
 	"regexp"
+	"strings"
 )
 
 type commentOpPreferences struct {
 	LineComment bool
 	HeadComment bool
 	FootComment bool
+}
+
+// documentStartMarkerRegExp matches a leading content line that is the
+// decoder's internal representation of a document start marker ('---'),
+// including its line ending.
+var documentStartMarkerRegExp = regexp.MustCompile(`(?m)^\$yqDocSeparator\$\r?\n?`)
+
+// preserveDocumentStartMarker keeps only the document start marker lines out
+// of leadingContent, dropping any leading comments - used when a head comment
+// is being assigned, replacing whatever comments used to be there.
+func preserveDocumentStartMarker(leadingContent string) string {
+	return strings.Join(documentStartMarkerRegExp.FindAllString(leadingContent, -1), "")
 }
 
 func assignCommentsOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
@@ -62,7 +75,9 @@ func assignCommentsOperator(d *dataTreeNavigator, context Context, expressionNod
 		}
 		if preferences.HeadComment {
 			candidate.HeadComment = comment
-			candidate.LeadingContent = "" // clobber the leading content, if there was any.
+			// Keep a pre-existing document start marker, but drop any leading
+			// comments - the new head comment is replacing those.
+			candidate.LeadingContent = preserveDocumentStartMarker(candidate.LeadingContent)
 		}
 		if preferences.FootComment {
 			candidate.FootComment = comment
