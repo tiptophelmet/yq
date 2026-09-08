@@ -199,13 +199,46 @@ func mergeObjects(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs
 	return lhs, nil
 }
 
+// targetPathAlreadyExists reports whether path is already present under node,
+// walking through mapping nodes only. It defaults to true (i.e. "treat it as
+// pre-existing") whenever it can't confidently tell, e.g. once the path
+// crosses into a sequence - that keeps this only affecting the map-merge
+// comment-preservation behaviour it was written for.
+func targetPathAlreadyExists(node *CandidateNode, path []interface{}) bool {
+	if node == nil {
+		return false
+	}
+	if len(path) == 0 {
+		return true
+	}
+	if node.Kind != MappingNode {
+		return true
+	}
+	wantedKey := fmt.Sprintf("%v", path[0])
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == wantedKey {
+			return targetPathAlreadyExists(node.Content[i+1], path[1:])
+		}
+	}
+	return false
+}
+
 func applyAssignment(d *dataTreeNavigator, context Context, pathIndexToStartFrom int, lhs *CandidateNode, rhs *CandidateNode, preferences multiplyPreferences) error {
 	shouldAppendArrays := preferences.AppendArrays
 
 	lhsPath := rhs.GetPath()[pathIndexToStartFrom:]
 	log.Debugf("merge - lhsPath %v", lhsPath)
 
-	assignmentOp := &Operation{OperationType: assignAttributesOpType, Preferences: preferences.AssignPrefs}
+	assignPrefs := preferences.AssignPrefs
+	if assignPrefs.OnlyWriteNull && !targetPathAlreadyExists(lhs, lhsPath) {
+		// the destination key doesn't exist yet, so this isn't a case of
+		// "only fill in nulls" - bring across the whole rhs node (including
+		// its comments) rather than gating the copy on the freshly created
+		// node's tag, which doesn't reliably look like "!!null".
+		assignPrefs.OnlyWriteNull = false
+	}
+
+	assignmentOp := &Operation{OperationType: assignAttributesOpType, Preferences: assignPrefs}
 	if shouldAppendArrays && rhs.Kind == SequenceNode {
 		assignmentOp.OperationType = addAssignOpType
 		log.Debugf("merge - assignmentOp.OperationType = addAssignOpType")
